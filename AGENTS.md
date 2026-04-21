@@ -236,3 +236,20 @@ When implementing or modifying code in this project:
 - Each Arduino folder is a separate PlatformIO project
 - Each contains its own `platformio.ini`
 - Code should be compatible with PlatformIO builds
+
+---
+
+## Verification Guidance
+When making code changes, prefer validation that is possible without hardware.
+
+Current verification priorities:
+- Build `arduino-main`
+- Build `arduino-measurement`
+- Build `arduino-opto`
+
+If logic is added or changed, also prefer:
+- simple logic tests where possible
+- mock/simulated inputs for protocol or state-flow behavior
+- explicit TODOs where real hardware validation is still required
+
+Do not claim hardware behavior is verified unless it has been tested on real hardware.
