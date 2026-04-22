@@ -262,3 +262,11 @@ Do not claim hardware behavior is verified unless it has been tested on real har
 - Code should remain simple and close to embedded C-style where appropriate
 - Avoid unnecessary complexity or heavy abstraction
 - Prefer clear and readable implementations over advanced C++ features
+
+## Pin Assignments
+Pin assignments are defined in `docs/pinouts.md`.
+
+When generating or modifying code:
+- follow the documented pin mappings
+- do not invent new mappings unless explicitly instructed
+- keep board-specific pin usage separated by Arduino
