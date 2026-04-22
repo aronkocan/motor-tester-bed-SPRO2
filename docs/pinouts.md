@@ -36,13 +36,13 @@ These pin assignments are based on the current provided table and may be refined
 |---|---|---|---|
 | D0 | PD0 / RX | Hardware serial to Nextion RX | USART |
 | D1 | PD1 / TX | Hardware serial to Nextion TX | USART |
-| D2 | PD2 | POWER button | input, active LOW |
-| D3 | PD3 | START button | input, active LOW |
-| D4 | PD4 | STOP button | input, active LOW |
-| D5 | PD5 | QUICKEY 1 button | input, active LOW |
-| D6 | PD6 | QUICKEY 2 button | input, active LOW |
-| D7 | PD7 | QUICKEY 3 button | input, active LOW |
-| D8 | PB0 | ENC button | encoder button, active LOW |
+| D2 | PD2 | POWER button | input, active HIGH |
+| D3 | PD3 | START button | input, active HIGH |
+| D4 | PD4 | STOP button | input, active HIGH |
+| D5 | PD5 | QUICKEY 1 button | input, active HIGH |
+| D6 | PD6 | QUICKEY 2 button | input, active HIGH |
+| D7 | PD7 | QUICKEY 3 button | input, active HIGH |
+| D8 | PB0 | ENC button | encoder button, active HIGH |
 | D9 | PB1 | ENC B | encoder signal |
 | D10 | PB2 | ENC A | encoder signal |
 | D12 | PB4 | Software serial to USB host TX | software serial |
