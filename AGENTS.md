@@ -253,3 +253,12 @@ If logic is added or changed, also prefer:
 - explicit TODOs where real hardware validation is still required
 
 Do not claim hardware behavior is verified unless it has been tested on real hardware.
+
+---
+
+## Language and Style
+
+- The project is implemented in C++ (Arduino environment)
+- Code should remain simple and close to embedded C-style where appropriate
+- Avoid unnecessary complexity or heavy abstraction
+- Prefer clear and readable implementations over advanced C++ features
