@@ -1,20 +1,12 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include "../../shared/protocol/command_status.h"
 
 namespace {
-constexpr uint8_t kOptoI2cAddress = 0x13;
-
 constexpr uint8_t kOptoPulsePin = 4;
 constexpr uint8_t kEncoderHolesPerRevolution = 20;
 constexpr unsigned long kRpmUpdateIntervalMs = 250;
 constexpr unsigned long kNoPulseTimeoutMs = 1000;
-
-// TODO(protocol): move to shared protocol header used by all boards.
-enum class CommandCode : uint8_t {
-  Start = 1,
-  Stop = 2,
-  Ping = 3,
-};
 
 enum class OptoState : uint8_t {
   Idle = 0,
@@ -28,13 +20,14 @@ struct OptoStatus {
   uint8_t progressPercent = 0;
   uint16_t rpm = 0;
   uint16_t milliAmps = 0;
+  SharedProtocol::ErrorCode errorCode = SharedProtocol::ErrorCode::None;
 };
 
 volatile uint32_t g_pulseCount = 0;
 volatile uint8_t g_lastPinState = LOW;
 volatile unsigned long g_lastPulseMs = 0;
 
-volatile CommandCode g_pendingCommand = CommandCode::Ping;
+volatile SharedProtocol::CommandCode g_pendingCommand = SharedProtocol::CommandCode::Ping;
 volatile bool g_hasPendingCommand = false;
 
 OptoState g_state = OptoState::Idle;
@@ -143,6 +136,7 @@ void updateRpmFromPulseCount(unsigned long nowMs) {
   g_lastPulseSnapshot = pulseSnapshot;
 
   if (pulsesInWindow == 0 && (nowMs - lastPulseMsSnapshot) >= kNoPulseTimeoutMs) {
+    g_status.errorCode = SharedProtocol::ErrorCode::OptoNoPulseTimeout;
     g_currentRpm = 0.0f;
   } else if (pulsesInWindow > 0) {
     const float revolutions = static_cast<float>(pulsesInWindow) /
@@ -153,6 +147,7 @@ void updateRpmFromPulseCount(unsigned long nowMs) {
   g_lastRpmUpdateMs = nowMs;
 
   if (g_currentRpm < 0.0f) {
+    g_status.errorCode = SharedProtocol::ErrorCode::InvalidRpmEstimate;
     setFault(F("invalid negative RPM estimate"));
     g_status.rpm = 0;
     return;
@@ -181,41 +176,40 @@ void onReceiveCommand(int byteCount) {
   }
 
   switch (rawCommand) {
-    case static_cast<uint8_t>(CommandCode::Start):
-      g_pendingCommand = CommandCode::Start;
+    case static_cast<uint8_t>(SharedProtocol::CommandCode::Start):
+      g_pendingCommand = SharedProtocol::CommandCode::Start;
       g_hasPendingCommand = true;
       break;
-    case static_cast<uint8_t>(CommandCode::Stop):
-      g_pendingCommand = CommandCode::Stop;
+    case static_cast<uint8_t>(SharedProtocol::CommandCode::Stop):
+      g_pendingCommand = SharedProtocol::CommandCode::Stop;
       g_hasPendingCommand = true;
       break;
-    case static_cast<uint8_t>(CommandCode::Ping):
-      g_pendingCommand = CommandCode::Ping;
+    case static_cast<uint8_t>(SharedProtocol::CommandCode::Ping):
+      g_pendingCommand = SharedProtocol::CommandCode::Ping;
       g_hasPendingCommand = true;
       break;
     default:
+      g_status.fault = true;
+      g_status.errorCode = SharedProtocol::ErrorCode::UnknownCommand;
       break;
   }
 }
 
 void onRequestStatus() {
   const OptoStatus status = g_statusSnapshot;
-
-  const uint8_t faultByte = status.fault ? 1U : 0U;
-  const uint8_t doneByte = status.measurementDone ? 1U : 0U;
-
+  const uint8_t flags = SharedProtocol::makeFlags(status.fault, status.measurementDone);
   const uint8_t rpmLow = static_cast<uint8_t>(status.rpm & 0x00FFU);
   const uint8_t rpmHigh = static_cast<uint8_t>((status.rpm >> 8) & 0x00FFU);
 
   // Opto board does not own motor-current sensing; keep byte 0 for compatibility.
   constexpr uint8_t kCurrentDeciAmpPlaceholder = 0;
 
-  Wire.write(faultByte);
-  Wire.write(doneByte);
+  Wire.write(flags);
   Wire.write(status.progressPercent);
   Wire.write(rpmLow);
   Wire.write(rpmHigh);
   Wire.write(kCurrentDeciAmpPlaceholder);
+  Wire.write(static_cast<uint8_t>(status.errorCode));
 }
 
 void handlePendingCommand(unsigned long nowMs) {
@@ -225,22 +219,24 @@ void handlePendingCommand(unsigned long nowMs) {
 
   g_hasPendingCommand = false;
 
-  if (g_pendingCommand == CommandCode::Start) {
+  if (g_pendingCommand == SharedProtocol::CommandCode::Start) {
     if (g_state == OptoState::Running) {
       return;
     }
 
     startMeasurement(nowMs);
+    g_status.errorCode = SharedProtocol::ErrorCode::None;
     return;
   }
 
-  if (g_pendingCommand == CommandCode::Stop) {
+  if (g_pendingCommand == SharedProtocol::CommandCode::Stop) {
     stopMeasurement(F("remote command"));
     g_status.fault = false;
+    g_status.errorCode = SharedProtocol::ErrorCode::None;
     return;
   }
 
-  if (g_pendingCommand == CommandCode::Ping) {
+  if (g_pendingCommand == SharedProtocol::CommandCode::Ping) {
     // No state changes. Ping is used as liveness check.
   }
 }
@@ -265,12 +261,12 @@ void setup() {
   const unsigned long nowMs = millis();
   clearRuntimeState(nowMs);
 
-  Wire.begin(kOptoI2cAddress);
+  Wire.begin(SharedProtocol::kOptoI2cAddress);
   Wire.onReceive(onReceiveCommand);
   Wire.onRequest(onRequestStatus);
 
   Serial.println(F("arduino-opto started."));
-  Serial.println(F("I2C status payload v0 enabled (6 bytes)."));
+  Serial.println(F("Shared I2C status payload enabled (6 bytes)."));
   Serial.print(F("Encoder holes/rev assumption: "));
   Serial.println(kEncoderHolesPerRevolution);
   Serial.println(F("TODO: validate signal polarity and pulse conditioning on real hardware."));
