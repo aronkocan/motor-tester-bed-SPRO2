@@ -8,10 +8,10 @@ constexpr unsigned long kNoPulseTimeoutMs = 1000;
 
 volatile uint32_t g_pulseCount = 0;
 volatile uint8_t g_lastPinState = LOW;
+volatile unsigned long g_lastPulseMs = 0;
 
 uint32_t g_lastPulseSnapshot = 0;
 unsigned long g_lastRpmUpdateMs = 0;
-unsigned long g_lastPulseMs = 0;
 float g_currentRpm = 0.0f;
 
 void setupPulseCapture() {
@@ -33,12 +33,13 @@ void updateRpmFromPulseCount(unsigned long nowMs) {
 
   noInterrupts();
   const uint32_t pulseSnapshot = g_pulseCount;
+  const unsigned long lastPulseMsSnapshot = g_lastPulseMs;
   interrupts();
 
   const uint32_t pulsesInWindow = pulseSnapshot - g_lastPulseSnapshot;
   g_lastPulseSnapshot = pulseSnapshot;
 
-  if (pulsesInWindow == 0 && (nowMs - g_lastPulseMs) >= kNoPulseTimeoutMs) {
+  if (pulsesInWindow == 0 && (nowMs - lastPulseMsSnapshot) >= kNoPulseTimeoutMs) {
     g_currentRpm = 0.0f;
   } else if (pulsesInWindow > 0) {
     const float revolutions = static_cast<float>(pulsesInWindow) /
