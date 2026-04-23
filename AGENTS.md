@@ -128,14 +128,48 @@ If guidance conflicts, use this priority order:
 Build system:
 - Each Arduino folder is an independent PlatformIO project with its own `platformio.ini`
 
-Verification guidance (without hardware):
-- If a change is board-local, build only affected board project(s)
+Verification policy by environment:
+
+### 1) Cloud environment verification (tooling may be unavailable)
+Use this path when running in managed/cloud agent environments where PlatformIO may not be preinstalled.
+
+Required checks:
+- Run and report the following board build commands:
+  - `pio run -d <board-folder>`
+  - `python -m platformio run -d <board-folder>`
+- If both fail due to missing PlatformIO tooling, treat the result as an environment limitation (not immediate code failure).
+
+Required reporting behavior:
+1. Include exact failing command(s) and error text in the check output.
+2. Mark build status as `PENDING (environment missing PlatformIO)`.
+3. Continue with non-build checks that are still possible:
+   - static code review for touched modules
+   - interface/protocol consistency review where applicable
+   - explicit TODO coverage for hardware-only assumptions
+4. Do not claim compile success in cloud-only runs without successful build output.
+
+### 2) Local/IDE verification (developer machine)
+Use this path when PlatformIO is available locally (for example via VS Code + PlatformIO or CLI install).
+
+Tooling options (either is acceptable):
+- PlatformIO Core CLI on `PATH` (`pio ...`)
+- Python module (`python -m platformio ...`)
+
+Build scope rules:
+- If a change is board-local, build only the affected board project(s).
 - If a change touches shared protocol/interfaces/pin mapping assumptions, build all three:
   - `arduino-main`
   - `arduino-measurement`
   - `arduino-opto`
-- If logic is changed, prefer lightweight logic checks or simulated/mockable paths when possible
-- Leave explicit TODOs for hardware-only validation gaps
+
+### 3) Hardware-aware validation status
+- Without hardware access, runtime behavior is provisional.
+- Leave explicit TODOs for hardware-only validation gaps.
+- Do not claim hardware behavior as verified unless tested on real hardware.
+
+Recommended reproducibility baseline:
+- Document which PlatformIO path is used by the team (CLI vs Python module) in CI/devcontainer setup.
+- Keep command examples in docs aligned with the chosen baseline.
 
 ---
 
