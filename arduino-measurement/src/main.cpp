@@ -47,6 +47,7 @@ struct MeasurementStatus {
 
 MeasurementState g_state = MeasurementState::Idle;
 MeasurementStatus g_status;
+MeasurementStatus g_statusSnapshot;
 
 volatile CommandCode g_pendingCommand = CommandCode::Ping;
 volatile bool g_hasPendingCommand = false;
@@ -85,8 +86,17 @@ void stopMotorDrive() {
   applyMotorPwm(0);
 }
 
+void publishStatusSnapshot();
+
 void clearStatus() {
   g_status = MeasurementStatus{};
+  publishStatusSnapshot();
+}
+
+void publishStatusSnapshot() {
+  noInterrupts();
+  g_statusSnapshot = g_status;
+  interrupts();
 }
 
 void startMeasurement(unsigned long nowMs) {
@@ -210,18 +220,20 @@ void onReceiveCommand(int byteCount) {
 }
 
 void onRequestStatus() {
-  const uint8_t faultByte = g_status.fault ? 1U : 0U;
-  const uint8_t doneByte = g_status.measurementDone ? 1U : 0U;
+  const MeasurementStatus status = g_statusSnapshot;
 
-  const uint8_t rpmLow = static_cast<uint8_t>(g_status.rpm & 0x00FFU);
-  const uint8_t rpmHigh = static_cast<uint8_t>((g_status.rpm >> 8) & 0x00FFU);
+  const uint8_t faultByte = status.fault ? 1U : 0U;
+  const uint8_t doneByte = status.measurementDone ? 1U : 0U;
 
-  const uint16_t deciAmp = g_status.milliAmps / 10U;
+  const uint8_t rpmLow = static_cast<uint8_t>(status.rpm & 0x00FFU);
+  const uint8_t rpmHigh = static_cast<uint8_t>((status.rpm >> 8) & 0x00FFU);
+
+  const uint16_t deciAmp = status.milliAmps / 10U;
   const uint8_t currentDeciAmp = (deciAmp > 255U) ? 255U : static_cast<uint8_t>(deciAmp);
 
   Wire.write(faultByte);
   Wire.write(doneByte);
-  Wire.write(g_status.progressPercent);
+  Wire.write(status.progressPercent);
   Wire.write(rpmLow);
   Wire.write(rpmHigh);
   Wire.write(currentDeciAmp);
@@ -280,4 +292,5 @@ void loop() {
 
   handlePendingCommand(nowMs);
   processMeasurement(nowMs);
+  publishStatusSnapshot();
 }

@@ -182,6 +182,18 @@ bool consumePressed(ButtonState& button) {
   return true;
 }
 
+void clearRemoteStatus(RemoteStatus& status) {
+  status = RemoteStatus{};
+}
+
+void prepareFreshRemoteStatusesForRun(unsigned long nowMs) {
+  clearRemoteStatus(g_measurementStatus);
+  clearRemoteStatus(g_optoStatus);
+
+  // Force an immediate post-start poll so measurement logic consumes fresh status.
+  g_lastI2cPollMs = nowMs - kI2cPollIntervalMs;
+}
+
 bool setupInputsComplete() {
   return g_setup.profileSelected && g_setup.motorConnectedConfirmed && g_setup.limitSet;
 }
@@ -323,6 +335,7 @@ void handleUnifiedStartStopLogic(unsigned long nowMs) {
     return;
   }
 
+  prepareFreshRemoteStatusesForRun(nowMs);
   g_measurementStartMs = nowMs;
   changePhase(RuntimePhase::Measurement);
 }

@@ -39,11 +39,18 @@ volatile bool g_hasPendingCommand = false;
 
 OptoState g_state = OptoState::Idle;
 OptoStatus g_status;
+OptoStatus g_statusSnapshot;
 
 uint32_t g_lastPulseSnapshot = 0;
 unsigned long g_lastRpmUpdateMs = 0;
 unsigned long g_measurementStartMs = 0;
 float g_currentRpm = 0.0f;
+
+void publishStatusSnapshot() {
+  noInterrupts();
+  g_statusSnapshot = g_status;
+  interrupts();
+}
 
 void setupPulseCapture() {
   pinMode(kOptoPulsePin, INPUT);
@@ -69,6 +76,7 @@ void clearRuntimeState(unsigned long nowMs) {
   g_status.rpm = 0;
   g_status.progressPercent = 0;
   g_status.measurementDone = false;
+  publishStatusSnapshot();
 }
 
 void startMeasurement(unsigned long nowMs) {
@@ -191,18 +199,20 @@ void onReceiveCommand(int byteCount) {
 }
 
 void onRequestStatus() {
-  const uint8_t faultByte = g_status.fault ? 1U : 0U;
-  const uint8_t doneByte = g_status.measurementDone ? 1U : 0U;
+  const OptoStatus status = g_statusSnapshot;
 
-  const uint8_t rpmLow = static_cast<uint8_t>(g_status.rpm & 0x00FFU);
-  const uint8_t rpmHigh = static_cast<uint8_t>((g_status.rpm >> 8) & 0x00FFU);
+  const uint8_t faultByte = status.fault ? 1U : 0U;
+  const uint8_t doneByte = status.measurementDone ? 1U : 0U;
+
+  const uint8_t rpmLow = static_cast<uint8_t>(status.rpm & 0x00FFU);
+  const uint8_t rpmHigh = static_cast<uint8_t>((status.rpm >> 8) & 0x00FFU);
 
   // Opto board does not own motor-current sensing; keep byte 0 for compatibility.
   constexpr uint8_t kCurrentDeciAmpPlaceholder = 0;
 
   Wire.write(faultByte);
   Wire.write(doneByte);
-  Wire.write(g_status.progressPercent);
+  Wire.write(status.progressPercent);
   Wire.write(rpmLow);
   Wire.write(rpmHigh);
   Wire.write(kCurrentDeciAmpPlaceholder);
@@ -272,4 +282,5 @@ void loop() {
   handlePendingCommand(nowMs);
   updateRpmFromPulseCount(nowMs);
   updateProgress(nowMs);
+  publishStatusSnapshot();
 }
