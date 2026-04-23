@@ -93,6 +93,7 @@ unsigned long g_measurementStartMs = 0;
 
 char g_nextionBuffer[kNextionBufferSize];
 size_t g_nextionLength = 0;
+uint8_t g_nextionTerminatorCount = 0;
 
 SoftwareSerial g_usbHostSerial(kPinUsbHostRx, kPinUsbHostTx);
 
@@ -225,41 +226,59 @@ bool pollBoardStatus(uint8_t address, RemoteStatus& status) {
 }
 
 void readNextionCommand() {
+  auto dispatchBufferedNextionMessage = []() {
+    if (g_nextionLength == 0) {
+      return;
+    }
+
+    g_nextionBuffer[g_nextionLength] = '\0';
+
+    if (strcmp(g_nextionBuffer, "START") == 0) {
+      g_startButton.pressedEvent = true;
+    } else if (strcmp(g_nextionBuffer, "STOP") == 0) {
+      g_stopButton.pressedEvent = true;
+    } else if (strcmp(g_nextionBuffer, "SETUP_PROFILE") == 0) {
+      g_setup.profileSelected = true;
+    } else if (strcmp(g_nextionBuffer, "SETUP_MOTOR_OK") == 0) {
+      g_setup.motorConnectedConfirmed = true;
+    } else if (strcmp(g_nextionBuffer, "SETUP_LIMIT_OK") == 0) {
+      g_setup.limitSet = true;
+    } else if (strcmp(g_nextionBuffer, "RESET_SETUP") == 0) {
+      g_setup = SetupInputs{};
+    } else if (strcmp(g_nextionBuffer, "FAULT_RESET") == 0) {
+      g_fault = FaultCode::None;
+      changePhase(RuntimePhase::Setup);
+    }
+
+    g_nextionLength = 0;
+  };
+
   while (Serial.available() > 0) {
-    const char incoming = static_cast<char>(Serial.read());
+    const uint8_t incoming = static_cast<uint8_t>(Serial.read());
+
+    // Nextion command responses/events are terminated by 0xFF 0xFF 0xFF.
+    // We primarily consume text commands here and dispatch when the terminator arrives.
+    if (incoming == 0xFF) {
+      ++g_nextionTerminatorCount;
+      if (g_nextionTerminatorCount >= 3) {
+        dispatchBufferedNextionMessage();
+        g_nextionTerminatorCount = 0;
+      }
+      continue;
+    }
+
+    g_nextionTerminatorCount = 0;
 
     if (incoming == '\n' || incoming == '\r') {
-      if (g_nextionLength == 0) {
-        continue;
-      }
-
-      g_nextionBuffer[g_nextionLength] = '\0';
-
-      if (strcmp(g_nextionBuffer, "START") == 0) {
-        g_startButton.pressedEvent = true;
-      } else if (strcmp(g_nextionBuffer, "STOP") == 0) {
-        g_stopButton.pressedEvent = true;
-      } else if (strcmp(g_nextionBuffer, "SETUP_PROFILE") == 0) {
-        g_setup.profileSelected = true;
-      } else if (strcmp(g_nextionBuffer, "SETUP_MOTOR_OK") == 0) {
-        g_setup.motorConnectedConfirmed = true;
-      } else if (strcmp(g_nextionBuffer, "SETUP_LIMIT_OK") == 0) {
-        g_setup.limitSet = true;
-      } else if (strcmp(g_nextionBuffer, "RESET_SETUP") == 0) {
-        g_setup = SetupInputs{};
-      } else if (strcmp(g_nextionBuffer, "FAULT_RESET") == 0) {
-        g_fault = FaultCode::None;
-        changePhase(RuntimePhase::Setup);
-      }
-
-      g_nextionLength = 0;
+      dispatchBufferedNextionMessage();
       continue;
     }
 
     if (g_nextionLength + 1 < kNextionBufferSize) {
-      g_nextionBuffer[g_nextionLength++] = incoming;
+      g_nextionBuffer[g_nextionLength++] = static_cast<char>(incoming);
     } else {
       g_nextionLength = 0;
+      g_nextionTerminatorCount = 0;
     }
   }
 }
@@ -276,7 +295,7 @@ void handleUnifiedStartStopLogic(unsigned long nowMs) {
     sendCommandToBoard(kMeasurementI2cAddress, CommandCode::Stop);
     sendCommandToBoard(kOptoI2cAddress, CommandCode::Stop);
 
-    if (g_phase == RuntimePhase::Measurement) {
+    if (g_phase != RuntimePhase::Setup) {
       changePhase(RuntimePhase::Setup);
     }
     return;
