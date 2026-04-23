@@ -173,8 +173,10 @@ void prepareFreshRemoteStatusesForRun(unsigned long nowMs) {
   clearRemoteStatus(g_measurementStatus);
   clearRemoteStatus(g_optoStatus);
 
-  // Force an immediate post-start poll so measurement logic consumes fresh status.
-  g_lastI2cPollMs = nowMs - kI2cPollIntervalMs;
+  // Wait one normal poll interval before consuming remote status.
+  // Slaves apply START in their loop(), while onRequest serves the last snapshot;
+  // polling in the same iteration as START can read stale done/fault bits.
+  g_lastI2cPollMs = nowMs;
 }
 
 bool setupInputsComplete() {

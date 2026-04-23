@@ -139,6 +139,10 @@ void updateRpmFromPulseCount(unsigned long nowMs) {
     g_status.errorCode = SharedProtocol::ErrorCode::OptoNoPulseTimeout;
     g_currentRpm = 0.0f;
   } else if (pulsesInWindow > 0) {
+    if (g_status.errorCode == SharedProtocol::ErrorCode::OptoNoPulseTimeout) {
+      g_status.errorCode = SharedProtocol::ErrorCode::None;
+    }
+
     const float revolutions = static_cast<float>(pulsesInWindow) /
                               static_cast<float>(kEncoderHolesPerRevolution);
     g_currentRpm = (revolutions * 60000.0f) / static_cast<float>(elapsedMs);
