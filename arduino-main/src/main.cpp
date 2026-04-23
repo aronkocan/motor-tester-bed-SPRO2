@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <SoftwareSerial.h>
 #include <Wire.h>
+#include "../../shared/protocol/command_status.h"
 
 namespace {
 constexpr uint8_t kPinPowerButton = 2;
@@ -16,36 +17,17 @@ constexpr uint8_t kPinEncoderA = 10;
 constexpr uint8_t kPinUsbHostTx = 12;
 constexpr uint8_t kPinUsbHostRx = 13;
 
-// TODO: replace with shared protocol header when communication.md is finalized.
-constexpr uint8_t kMeasurementI2cAddress = 0x12;
-constexpr uint8_t kOptoI2cAddress = 0x13;
-
 constexpr unsigned long kButtonDebounceMs = 40;
 constexpr unsigned long kProgressUpdateIntervalMs = 250;
 constexpr unsigned long kI2cPollIntervalMs = 100;
 constexpr unsigned long kMeasurementTimeoutMs = 30000;
 constexpr size_t kNextionBufferSize = 48;
 
-// TODO: move to shared protocol definitions once cross-board contract is finalized.
-enum class CommandCode : uint8_t {
-  Start = 1,
-  Stop = 2,
-  Ping = 3,
-};
-
 enum class RuntimePhase : uint8_t {
   Setup = 0,
   Measurement = 1,
   Result = 2,
   Fault = 3,
-};
-
-enum class FaultCode : uint8_t {
-  None = 0,
-  SetupMissingInput = 1,
-  MeasurementBoardTimeout = 2,
-  AbnormalMotorCondition = 3,
-  Unknown = 255,
 };
 
 struct RemoteStatus {
@@ -55,6 +37,7 @@ struct RemoteStatus {
   uint8_t progressPercent = 0;
   uint16_t rpm = 0;
   uint16_t milliAmps = 0;
+  SharedProtocol::ErrorCode errorCode = SharedProtocol::ErrorCode::None;
 };
 
 struct SetupInputs {
@@ -72,7 +55,7 @@ struct ButtonState {
 };
 
 RuntimePhase g_phase = RuntimePhase::Setup;
-FaultCode g_fault = FaultCode::None;
+SharedProtocol::ErrorCode g_fault = SharedProtocol::ErrorCode::None;
 
 SetupInputs g_setup;
 
@@ -118,17 +101,17 @@ const __FlashStringHelper* phaseToText(RuntimePhase phase) {
   return F("unknown");
 }
 
-void setFault(FaultCode code, const __FlashStringHelper* message) {
+void setFault(SharedProtocol::ErrorCode code, const __FlashStringHelper* message) {
   g_fault = code;
   changePhase(RuntimePhase::Fault);
 
   // Safety rule: stop measurement flow as soon as serious fault is identified.
-  Wire.beginTransmission(kMeasurementI2cAddress);
-  Wire.write(static_cast<uint8_t>(CommandCode::Stop));
+  Wire.beginTransmission(SharedProtocol::kMeasurementI2cAddress);
+  Wire.write(static_cast<uint8_t>(SharedProtocol::CommandCode::Stop));
   Wire.endTransmission();
 
-  Wire.beginTransmission(kOptoI2cAddress);
-  Wire.write(static_cast<uint8_t>(CommandCode::Stop));
+  Wire.beginTransmission(SharedProtocol::kOptoI2cAddress);
+  Wire.write(static_cast<uint8_t>(SharedProtocol::CommandCode::Stop));
   Wire.endTransmission();
 
   logStream().print(F("FAULT: "));
@@ -207,32 +190,36 @@ void publishSetupValidationIfMissing() {
   // TODO: map to specific missing-field UI notification in Nextion.
 }
 
-bool sendCommandToBoard(uint8_t address, CommandCode command) {
+bool sendCommandToBoard(uint8_t address, SharedProtocol::CommandCode command) {
   Wire.beginTransmission(address);
   Wire.write(static_cast<uint8_t>(command));
   return Wire.endTransmission() == 0;
 }
 
 bool pollBoardStatus(uint8_t address, RemoteStatus& status) {
-  // Status layout v0:
-  // [fault][measurementDone][progressPercent][rpmLow][rpmHigh][currentDeciAmp]
-  constexpr uint8_t kExpectedBytes = 6;
-  const uint8_t bytesRead = Wire.requestFrom(address, kExpectedBytes);
-  if (bytesRead != kExpectedBytes) {
+  const uint8_t bytesRead = Wire.requestFrom(address, SharedProtocol::kStatusPayloadSize);
+  if (bytesRead != SharedProtocol::kStatusPayloadSize) {
     status.online = false;
     return false;
   }
 
-  status.online = true;
-  status.fault = Wire.read() != 0;
-  status.measurementDone = Wire.read() != 0;
-  status.progressPercent = Wire.read();
+  uint8_t payload[SharedProtocol::kStatusPayloadSize];
+  for (uint8_t i = 0; i < SharedProtocol::kStatusPayloadSize; ++i) {
+    payload[i] = Wire.read();
+  }
 
-  const uint8_t rpmLow = Wire.read();
-  const uint8_t rpmHigh = Wire.read();
+  status.online = true;
+  const uint8_t flags = payload[SharedProtocol::kStatusIdxFlags];
+  status.fault = SharedProtocol::hasFlag(flags, SharedProtocol::StatusFlags::Fault);
+  status.measurementDone = SharedProtocol::hasFlag(flags, SharedProtocol::StatusFlags::MeasurementDone);
+  status.progressPercent = payload[SharedProtocol::kStatusIdxProgressPercent];
+
+  const uint8_t rpmLow = payload[SharedProtocol::kStatusIdxRpmLow];
+  const uint8_t rpmHigh = payload[SharedProtocol::kStatusIdxRpmHigh];
   status.rpm = static_cast<uint16_t>(rpmHigh << 8) | rpmLow;
 
-  status.milliAmps = static_cast<uint16_t>(Wire.read()) * 10U;
+  status.milliAmps = static_cast<uint16_t>(payload[SharedProtocol::kStatusIdxCurrentDeciAmp]) * 10U;
+  status.errorCode = static_cast<SharedProtocol::ErrorCode>(payload[SharedProtocol::kStatusIdxErrorCode]);
 
   return true;
 }
@@ -258,7 +245,7 @@ void readNextionCommand() {
     } else if (strcmp(g_nextionBuffer, "RESET_SETUP") == 0) {
       g_setup = SetupInputs{};
     } else if (strcmp(g_nextionBuffer, "FAULT_RESET") == 0) {
-      g_fault = FaultCode::None;
+      g_fault = SharedProtocol::ErrorCode::None;
       changePhase(RuntimePhase::Setup);
     }
 
@@ -298,14 +285,14 @@ void readNextionCommand() {
 void handleUnifiedStartStopLogic(unsigned long nowMs) {
   if (g_phase == RuntimePhase::Fault &&
       (consumePressed(g_stopButton) || consumePressed(g_powerButton))) {
-    g_fault = FaultCode::None;
+    g_fault = SharedProtocol::ErrorCode::None;
     changePhase(RuntimePhase::Setup);
     return;
   }
 
   if (consumePressed(g_stopButton) || consumePressed(g_powerButton)) {
-    sendCommandToBoard(kMeasurementI2cAddress, CommandCode::Stop);
-    sendCommandToBoard(kOptoI2cAddress, CommandCode::Stop);
+    sendCommandToBoard(SharedProtocol::kMeasurementI2cAddress, SharedProtocol::CommandCode::Stop);
+    sendCommandToBoard(SharedProtocol::kOptoI2cAddress, SharedProtocol::CommandCode::Stop);
 
     if (g_phase != RuntimePhase::Setup) {
       changePhase(RuntimePhase::Setup);
@@ -324,14 +311,17 @@ void handleUnifiedStartStopLogic(unsigned long nowMs) {
 
   if (!setupInputsComplete()) {
     publishSetupValidationIfMissing();
-    setFault(FaultCode::SetupMissingInput, F("Cannot start: setup data incomplete."));
+    setFault(SharedProtocol::ErrorCode::SetupMissingInput, F("Cannot start: setup data incomplete."));
     return;
   }
 
-  const bool measurementAccepted = sendCommandToBoard(kMeasurementI2cAddress, CommandCode::Start);
-  const bool optoAccepted = sendCommandToBoard(kOptoI2cAddress, CommandCode::Start);
+  const bool measurementAccepted = sendCommandToBoard(SharedProtocol::kMeasurementI2cAddress,
+                                                       SharedProtocol::CommandCode::Start);
+  const bool optoAccepted = sendCommandToBoard(SharedProtocol::kOptoI2cAddress,
+                                                SharedProtocol::CommandCode::Start);
   if (!measurementAccepted || !optoAccepted) {
-    setFault(FaultCode::MeasurementBoardTimeout, F("Could not start all remote boards."));
+    setFault(SharedProtocol::ErrorCode::RemoteBoardTimeout,
+             F("Could not start all remote boards."));
     return;
   }
 
@@ -364,8 +354,8 @@ void pollRemoteBoardsIfDue(unsigned long nowMs) {
     return;
   }
 
-  pollBoardStatus(kMeasurementI2cAddress, g_measurementStatus);
-  pollBoardStatus(kOptoI2cAddress, g_optoStatus);
+  pollBoardStatus(SharedProtocol::kMeasurementI2cAddress, g_measurementStatus);
+  pollBoardStatus(SharedProtocol::kOptoI2cAddress, g_optoStatus);
 
   g_lastI2cPollMs = nowMs;
 }
@@ -377,14 +367,24 @@ void processMeasurementPhase(unsigned long nowMs) {
 
   if (!g_measurementStatus.online || !g_optoStatus.online) {
     if ((nowMs - g_measurementStartMs) > kMeasurementTimeoutMs) {
-      setFault(FaultCode::MeasurementBoardTimeout,
+      setFault(SharedProtocol::ErrorCode::RemoteBoardTimeout,
                F("Remote board timeout during measurement."));
     }
     return;
   }
 
+  if (g_measurementStatus.errorCode != SharedProtocol::ErrorCode::None) {
+    setFault(g_measurementStatus.errorCode, F("Measurement board error code reported."));
+    return;
+  }
+
+  if (g_optoStatus.errorCode != SharedProtocol::ErrorCode::None) {
+    setFault(g_optoStatus.errorCode, F("Opto board error code reported."));
+    return;
+  }
+
   if (g_measurementStatus.fault || g_optoStatus.fault) {
-    setFault(FaultCode::AbnormalMotorCondition,
+    setFault(SharedProtocol::ErrorCode::AbnormalMotorCondition,
              F("Remote board reported abnormal motor condition."));
     return;
   }
@@ -448,7 +448,7 @@ void setup() {
 
   logStream().println(F("arduino-main coordinator started."));
   logStream().println(F("Runtime is provisional until hardware validation."));
-  logStream().println(F("TODO: align I2C payload with shared protocol spec once defined."));
+  logStream().println(F("Shared command/status protocol enabled (v1)."));
 }
 
 void loop() {

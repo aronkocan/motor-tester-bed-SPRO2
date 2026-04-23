@@ -1,9 +1,8 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include "../../shared/protocol/command_status.h"
 
 namespace {
-constexpr uint8_t kMeasurementI2cAddress = 0x12;
-
 constexpr uint8_t kPinPwmEnB = 6;
 constexpr uint8_t kPinMotorVoltageSense = A0;
 
@@ -24,12 +23,6 @@ constexpr float kRcBridgeScale = 4.0f;
 constexpr uint16_t kEstimatedCurrentFaultThresholdMilliAmps = 2000;
 constexpr float kEstimatedCurrentScaleMilliAmpsPerVolt = 250.0f;
 
-enum class CommandCode : uint8_t {
-  Start = 1,
-  Stop = 2,
-  Ping = 3,
-};
-
 enum class MeasurementState : uint8_t {
   Idle = 0,
   Running = 1,
@@ -43,13 +36,14 @@ struct MeasurementStatus {
   uint8_t progressPercent = 0;
   uint16_t rpm = 0;
   uint16_t milliAmps = 0;
+  SharedProtocol::ErrorCode errorCode = SharedProtocol::ErrorCode::None;
 };
 
 MeasurementState g_state = MeasurementState::Idle;
 MeasurementStatus g_status;
 MeasurementStatus g_statusSnapshot;
 
-volatile CommandCode g_pendingCommand = CommandCode::Ping;
+volatile SharedProtocol::CommandCode g_pendingCommand = SharedProtocol::CommandCode::Ping;
 volatile bool g_hasPendingCommand = false;
 
 unsigned long g_measurementStartedMs = 0;
@@ -160,6 +154,7 @@ void processMeasurement(unsigned long nowMs) {
     g_status.milliAmps = estimateCurrentMilliAmps(g_motorVoltage);
 
     if (g_status.milliAmps >= kEstimatedCurrentFaultThresholdMilliAmps) {
+      g_status.errorCode = SharedProtocol::ErrorCode::EstimatedOverCurrent;
       setFault(F("estimated overcurrent"));
       return;
     }
@@ -202,41 +197,38 @@ void onReceiveCommand(int byteCount) {
   }
 
   switch (rawCommand) {
-    case static_cast<uint8_t>(CommandCode::Start):
-      g_pendingCommand = CommandCode::Start;
+    case static_cast<uint8_t>(SharedProtocol::CommandCode::Start):
+      g_pendingCommand = SharedProtocol::CommandCode::Start;
       g_hasPendingCommand = true;
       break;
-    case static_cast<uint8_t>(CommandCode::Stop):
-      g_pendingCommand = CommandCode::Stop;
+    case static_cast<uint8_t>(SharedProtocol::CommandCode::Stop):
+      g_pendingCommand = SharedProtocol::CommandCode::Stop;
       g_hasPendingCommand = true;
       break;
-    case static_cast<uint8_t>(CommandCode::Ping):
-      g_pendingCommand = CommandCode::Ping;
+    case static_cast<uint8_t>(SharedProtocol::CommandCode::Ping):
+      g_pendingCommand = SharedProtocol::CommandCode::Ping;
       g_hasPendingCommand = true;
       break;
     default:
+      g_status.fault = true;
+      g_status.errorCode = SharedProtocol::ErrorCode::UnknownCommand;
       break;
   }
 }
 
 void onRequestStatus() {
   const MeasurementStatus status = g_statusSnapshot;
-
-  const uint8_t faultByte = status.fault ? 1U : 0U;
-  const uint8_t doneByte = status.measurementDone ? 1U : 0U;
-
+  const uint8_t flags = SharedProtocol::makeFlags(status.fault, status.measurementDone);
   const uint8_t rpmLow = static_cast<uint8_t>(status.rpm & 0x00FFU);
   const uint8_t rpmHigh = static_cast<uint8_t>((status.rpm >> 8) & 0x00FFU);
-
   const uint16_t deciAmp = status.milliAmps / 10U;
   const uint8_t currentDeciAmp = (deciAmp > 255U) ? 255U : static_cast<uint8_t>(deciAmp);
-
-  Wire.write(faultByte);
-  Wire.write(doneByte);
+  Wire.write(flags);
   Wire.write(status.progressPercent);
   Wire.write(rpmLow);
   Wire.write(rpmHigh);
   Wire.write(currentDeciAmp);
+  Wire.write(static_cast<uint8_t>(status.errorCode));
 }
 
 void handlePendingCommand(unsigned long nowMs) {
@@ -246,24 +238,26 @@ void handlePendingCommand(unsigned long nowMs) {
 
   g_hasPendingCommand = false;
 
-  if (g_pendingCommand == CommandCode::Start) {
+  if (g_pendingCommand == SharedProtocol::CommandCode::Start) {
     if (g_state == MeasurementState::Running) {
       return;
     }
 
     g_status.fault = false;
+    g_status.errorCode = SharedProtocol::ErrorCode::None;
     startMeasurement(nowMs);
     return;
   }
 
-  if (g_pendingCommand == CommandCode::Stop) {
+  if (g_pendingCommand == SharedProtocol::CommandCode::Stop) {
     stopMeasurement(F("remote command"));
     g_state = MeasurementState::Idle;
     g_status.fault = false;
+    g_status.errorCode = SharedProtocol::ErrorCode::None;
     return;
   }
 
-  if (g_pendingCommand == CommandCode::Ping) {
+  if (g_pendingCommand == SharedProtocol::CommandCode::Ping) {
     // Intentionally no state changes. Ping is used as liveness check.
   }
 }
@@ -276,14 +270,14 @@ void setup() {
   pinMode(kPinMotorVoltageSense, INPUT);
   stopMotorDrive();
 
-  Wire.begin(kMeasurementI2cAddress);
+  Wire.begin(SharedProtocol::kMeasurementI2cAddress);
   Wire.onReceive(onReceiveCommand);
   Wire.onRequest(onRequestStatus);
 
   clearStatus();
 
   Serial.println(F("arduino-measurement started."));
-  Serial.println(F("I2C status payload v0 enabled (6 bytes)."));
+  Serial.println(F("Shared I2C status payload enabled (6 bytes)."));
   Serial.println(F("TODO: use INA226_1 (0x40) and INA226_2 (0x45) after hardware bring-up."));
 }
 
