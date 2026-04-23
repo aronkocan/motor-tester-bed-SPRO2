@@ -1,64 +1,150 @@
 # Motor Tester Bed (SPRO2)
 
 ## Overview
-This project is an embedded system designed to measure and evaluate small electric motors (e.g. DC motors).
+Motor Tester Bed (SPRO2) is an embedded multi-controller system for measuring and evaluating small electric motors (for example, DC motors). The intended outcome is to derive unknown motor parameters through controlled measurement runs and compare them against acceptable tolerance ranges.
 
-The goal is to determine unknown motor parameters by performing controlled measurements and analyzing the results within a defined tolerance range.
+> **Project maturity:** early-stage and partly theoretical. Not all hardware is available yet, so parts of the implementation remain provisional until real hardware validation is complete.
 
 ---
 
-## System Architecture
+## System Composition
+The system is split across three Arduino Nano-based controllers plus one Nextion display:
 
-The system consists of three Arduino boards and a display:
+- **`arduino-main` (central coordinator)**
+  - high-level control and state handling
+  - runtime phase transitions (`setup → measurement → result`)
+  - coordination of the other Arduino boards
+  - user command intake from hardware controls
+  - Nextion communication over USART
 
-- **arduino-main**
-  - central controller of the system
-  - communicates with other boards and the display
+- **`arduino-measurement`**
+  - sensor reading
+  - measurement-side processing
+  - motor drive/PWM output logic (where applicable)
+  - sends measurement status/data to `arduino-main`
 
-- **arduino-measurement**
-  - measures motor properties (current, voltage, torque)
-  - may control the motor via PWM
-
-- **arduino-opto**
-  - handles optocoupler-related functionality
+- **`arduino-opto`**
+  - optocoupler input/output handling
+  - encoder pulse/RPM signal handling
+  - sends optocoupler-derived status/data to `arduino-main`
 
 - **Nextion display**
-  - provides the user interface
-  - allows starting/stopping measurements
-  - displays progress and results
+  - setup input and operator interaction
+  - progress and result presentation
 
 ---
 
-## Communication
+## Responsibility Boundaries
+Responsibilities are intentionally separated by board:
 
-- Arduino ↔ Arduino: I2C  
-- Main Arduino ↔ Display: USART  
-
----
-
-## Project Structure
-
-    arduino-main/
-    arduino-measurement/
-    arduino-opto/
-    docs/
-    AGENTS.md
-    README.md
-
-Each Arduino folder is an independent PlatformIO project.
+- Keep runtime logic within the board that owns it.
+- Do not shift board responsibilities unless there is an explicit design reason.
+- Shared protocol/message definitions are allowed when required for cross-board consistency.
 
 ---
 
-## Current Status
+## Communication Contracts
+- **`arduino-main` ↔ `arduino-measurement`:** I2C
+- **`arduino-main` ↔ `arduino-opto`:** I2C
+- **`arduino-main` ↔ Nextion display:** USART
 
-- Early development phase  
-- Project structure and basic setup in progress  
-- System architecture still being refined  
-- No hardware available yet → implementation is currently theoretical
+Design expectations:
+
+- Message meaning should stay explicit and simple.
+- Avoid unnecessary protocol complexity.
+- Keep protocol definitions consistent across all participating boards.
+- Where communication behavior is uncertain, document assumptions and leave TODOs.
 
 ---
 
-## Notes
+## Runtime Model
+The runtime model has three phases:
 
-- Some system details are still being defined and may change during development  
-- Hardware limitations may affect final performance and accuracy  
+1. **Setup phase**
+   - User enters/selects required setup inputs.
+   - System prepares test conditions.
+2. **Measurement phase**
+   - Measurement runs and reports periodic progress.
+   - Stop must remain immediately available.
+3. **Result phase**
+   - System transitions automatically when measurement completes.
+   - Measured/calculated outputs are shown.
+
+### Start/Stop Sources
+Start/stop commands currently originate from:
+
+- Hardware buttons connected to `arduino-main`
+
+All start/stop requests must follow the same state transition and safety behavior.
+
+---
+
+## Fault and Error Handling Expectations
+The system should visibly notify the user when:
+
+- required setup input is missing
+- motor behavior appears invalid/abnormal
+- measurement fails or abnormal behavior is detected
+
+Fault handling rules:
+
+- On serious measurement faults, stop safely.
+- Present a clear fault state to the user.
+- Do not ignore faults silently.
+- Keep fault handling explicit and extendable.
+
+---
+
+## Pin Assignments
+Pin mappings are maintained in [`docs/pinouts.md`](docs/pinouts.md).
+
+Use that file as the source of truth before making wiring or firmware pin changes.
+
+---
+
+## Repository Structure
+
+```text
+arduino-main/
+arduino-measurement/
+arduino-opto/
+docs/
+AGENTS.md
+README.md
+```
+
+Each Arduino folder is an independent PlatformIO project with its own `platformio.ini`.
+
+---
+
+## Build & Verification
+In cloud/managed environments, PlatformIO tooling may be unavailable.
+
+Recommended board build commands:
+
+- `pio run -d <board-folder>`
+- `python -m platformio run -d <board-folder>`
+
+If both fail because PlatformIO is missing, treat status as:
+
+- **`PENDING (environment missing PlatformIO)`**
+
+and continue with static consistency checks (interfaces, documentation alignment, TODO coverage for hardware-only assumptions).
+
+---
+
+## Engineering Principles
+- Keep logic simple, readable, and embedded-friendly.
+- Avoid unnecessary abstraction and dynamic memory usage.
+- Prefer maintainability/debuggability over cleverness.
+- Avoid premature optimization.
+- Preserve structure unless a clear improvement is needed.
+
+Language baseline: Arduino C++ with straightforward implementation style.
+
+---
+
+## Current Validation Status
+- Runtime behavior is **provisional** without real hardware tests.
+- Hardware-dependent behavior should be treated as unverified until physically tested.
+- Keep assumptions explicit and conservative.
