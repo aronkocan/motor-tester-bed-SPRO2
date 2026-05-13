@@ -166,6 +166,7 @@ struct MeasurementDataPoint {
     float power;
     float rpm;
 };
+```
 
 ---
 
