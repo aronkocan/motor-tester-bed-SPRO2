@@ -144,6 +144,102 @@ The Nextion display should not own the measurement sequence or decide runtime ph
 
 ---
 
+## Measurement Data Model
+
+Completed measurement output should be represented as datapoints.
+
+Each datapoint contains:
+
+- duty cycle step
+- effective voltage
+- torque
+- power
+- RPM
+
+The intended output data structure should represent one completed measurement point. Example concept:
+
+```cpp
+struct MeasurementDataPoint {
+    uint8_t dutyCycleStep;
+    float effectiveVoltage;
+    float torque;
+    float power;
+    float rpm;
+};
+
+---
+
+## Measurement Modes
+
+The system supports two measurement modes: automatic measurement and manual/target-based measurement.
+
+Both modes should reuse the same basic measurement cycle:
+
+1. Set duty cycle value.
+2. Wait for motor behavior to stabilize.
+3. Measure voltage/current on `arduino-measurement`.
+4. Measure RPM on `arduino-opto`.
+5. Send measurement results back to `arduino-main`.
+6. Process the received data on `arduino-main`.
+7. Store the completed datapoint.
+
+### Automatic Measurement Mode
+
+Automatic measurement sweeps through a selected duty cycle range and records datapoints across that range.
+
+User setup:
+- select measurement range, for example 20% to 50%
+- convert selected percentages to PWM/duty cycle values, for example:
+  - 20% ≈ 51
+  - 50% ≈ 128
+
+Runtime behavior:
+- calculate an appropriate duty cycle step size for the selected range
+- limit the total number of stored datapoints to a maximum of 51 because Arduino memory is limited
+- run the shared measurement cycle for each planned duty cycle step
+- repeat until all planned datapoints in the selected range have been measured, using the calculated duty cycle step size
+- transition to result/output handling when complete
+
+Automatic mode should not store more datapoints than the configured maximum.
+
+### Manual / Target-Based Measurement Mode
+
+Manual measurement is used to find the duty cycle where a selected measured value reaches a user-defined target.
+
+User setup:
+- select one target data type from the available measured/calculated values
+  - duty cycle
+  - effective voltage
+  - torque
+  - power
+  - RPM
+- input the target value
+
+Example:
+- selected target type: RPM
+- target value: 300 RPM
+- goal: find the duty cycle where the motor reaches approximately 300 RPM, then store the resulting measurement as a complete `MeasurementDataPoint` containing duty cycle step, effective voltage, torque, power, and RPM
+
+Because duty cycle is discrete and motor behavior is not perfectly exact, the target value does not need to be reached exactly. A configurable tolerance/margin should be used.
+
+Runtime behavior:
+1. Measure the minimum reachable value at the lowest duty cycle.
+2. Measure the maximum reachable value at the highest duty cycle.
+3. Check whether the target is inside the reachable range.
+4. If the target is below the reachable range:
+   - return/store the minimum reached datapoint
+   - report that the requested target is below the reachable range
+5. If the target is above the reachable range:
+   - return/store the maximum reached datapoint
+   - report that the requested target is above the reachable range
+6. If the target is reachable:
+   - adjust the duty cycle until the selected measured value is within the accepted tolerance
+   - record the corresponding datapoint
+
+Manual mode should still use the same shared measurement cycle for each tested duty cycle.
+
+---
+
 ## Engineering Principles
 
 This is a small second-semester embedded project. The main priority is a simple, understandable, and easy-to-work-with implementation.
