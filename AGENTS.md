@@ -70,8 +70,8 @@ The display may handle local page navigation internally. The main Arduino should
 - `arduino-main` ↔ `arduino-measurement`: I2C
 - `arduino-main` ↔ `arduino-opto`: I2C
 - `arduino-main` ↔ Nextion display (`NX8048P050`): USART
-- `arduino-measurement` ↔ INA226 sensor for Motor Under Test: I2C
-- `arduino-measurement` ↔ INA226 sensor for Load Motor / testing motor: I2C
+- `arduino-main` ↔ INA226 sensor for Motor Under Test: I2C
+- `arduino-main` ↔ INA226 sensor for Load Motor / testing motor: I2C
 
 Notes:
 - All I2C devices on the same bus must use unique addresses.

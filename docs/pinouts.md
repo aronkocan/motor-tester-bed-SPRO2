@@ -15,11 +15,6 @@ This document defines the current pin assignments for the three Arduino Nano boa
 | A4 | PC4 / SDA | I2C | communication with other Nanos |
 | A5 | PC5 / SCL | I2C | communication with other Nanos |
 
-### Additional notes
-- INA226_1: Sensor for Motor Under Test (**address: 0x40**)
-- INA226_2: Sensor for Load Motor / testing motor (**address: 0x45**)
-- Communicates with main Arduino via I2C
-
 ### Unassigned
 - D0, D1, D2, D3, D4, D5, D7, D8, D9, D10, D11, D12, D13
 - A1, A2, A3, A5, A6, A7
@@ -34,15 +29,10 @@ This document defines the current pin assignments for the three Arduino Nano boa
 |---|---|---|---|
 | D0 | PD0 / RX | Hardware serial to Nextion RX | USART |
 | D1 | PD1 / TX | Hardware serial to Nextion TX | USART |
-| D2 | PD2 | POWER button | input, active HIGH |
 | D3 | PD3 | START button | input, active HIGH |
 | D4 | PD4 | STOP button | input, active HIGH |
-| D5 | PD5 | QUICKEY 1 button | input, active HIGH |
 | D6 | PD6 | START button LED | input, active HIGH |
 | D7 | PD7 | STOP button LED | input, active HIGH |
-| D8 | PB0 | ENC button | encoder button, active HIGH |
-| D9 | PB1 | ENC B | encoder signal |
-| D10 | PB2 | ENC A | encoder signal |
 | D12 | PB4 | Software serial to USB host TX | software serial |
 | D13 | PB5 | Software serial to USB host RX | software serial |
 | A4 | PC4 / SDA | I2C | communication with other Nanos |
@@ -54,9 +44,11 @@ This document defines the current pin assignments for the three Arduino Nano boa
   - `arduino-measurement` via I2C
   - `arduino-opto` via I2C
   - Nextion display via USART
+  - INA226_1: Sensor for Motor Under Test via I2C
+  - INA226_2: Sensor for Load Motor / testing motor via I2C
 
 ### Unassigned
-- D11
+- D2, D5, D8, D9, D10, D11
 - A0, A1, A2, A3, A5, A6, A7
 
 ---
