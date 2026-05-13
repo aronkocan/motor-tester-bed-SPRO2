@@ -1,7 +1,13 @@
 #include <stdio.h>
 #include <avr/io.h>
 #include <util/delay.h>
+#include <Arduino.h>
 
+
+
+// =======================
+// Runtime States
+// =======================
 
 enum class MainState {
     WAIT_FOR_SETUP,
@@ -12,18 +18,25 @@ enum class MainState {
     ERROR
 };
 
+
+// =======================
+// Measurement Modes
+// =======================
+
 enum class MeasurementMode {
-    MANUAL,
-    AUTO
+    AUTOMATIC,
+    MANUAL_TARGET
 };
 
 
 
-void intialize_hardware(void);
+
+
+void initializeSystem(void);
 
 int main(void) {
 
-    intialize_hardware();
+    initializeSystem();
 
     while(1) {
         runStateMachine();
@@ -60,4 +73,48 @@ void runStateMachine() {
             handleErrorState();
             break;
     }
+}
+
+
+// =======================
+// State Handlers
+// =======================
+
+
+void handleWaitForSetupState() {
+
+}
+
+
+void handlePrepareTestState() {
+
+}
+
+
+void handleRunMeasurementCycleState() {
+
+}
+
+
+void handleEvaluateNextStepState() {
+
+}
+
+
+void handleOutputResultsState() {
+
+}
+
+
+void handleErrorState() {
+
+}
+
+
+// =======================
+// Function Implementations
+// =======================
+
+void initializeSystem() {
+
 }
