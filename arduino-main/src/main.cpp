@@ -29,21 +29,17 @@ enum class MeasurementMode {
 };
 
 
+// =======================
+// Setup / Loop
+// =======================
 
-
-
-void initializeSystem(void);
-
-int main(void) {
-
+void setup() {
     initializeSystem();
-
-    while(1) {
-        runStateMachine();
-    }
-    return 0;
 }
 
+void loop() {
+    runStateMachine();
+}
 
 
 void runStateMachine() {
