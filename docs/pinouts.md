@@ -2,8 +2,6 @@
 
 This document defines the current pin assignments for the three Arduino Nano boards used in the motor tester bed project.
 
-These pin assignments are based on the current provided table and may be refined later if hardware testing shows changes are needed.
-
 ---
 
 ## arduino-measurement
@@ -18,11 +16,11 @@ These pin assignments are based on the current provided table and may be refined
 | A5 | PC5 / SCL | I2C | communication with other Nanos |
 
 ### Additional notes
-- INA226_1: test motor current (**address: 0x40**)
-- INA226_2: measure motor voltage + current (**address: 0x45**)
+- INA226_1: Sensor for Motor Under Test (**address: 0x40**)
+- INA226_2: Sensor for Load Motor / testing motor (**address: 0x45**)
 - Communicates with main Arduino via I2C
 
-### Unassigned / not yet defined
+### Unassigned
 - D0, D1, D2, D3, D4, D5, D7, D8, D9, D10, D11, D12, D13
 - A1, A2, A3, A5, A6, A7
 
@@ -40,8 +38,8 @@ These pin assignments are based on the current provided table and may be refined
 | D3 | PD3 | START button | input, active HIGH |
 | D4 | PD4 | STOP button | input, active HIGH |
 | D5 | PD5 | QUICKEY 1 button | input, active HIGH |
-| D6 | PD6 | QUICKEY 2 button | input, active HIGH |
-| D7 | PD7 | QUICKEY 3 button | input, active HIGH |
+| D6 | PD6 | START button LED | input, active HIGH |
+| D7 | PD7 | STOP button LED | input, active HIGH |
 | D8 | PB0 | ENC button | encoder button, active HIGH |
 | D9 | PB1 | ENC B | encoder signal |
 | D10 | PB2 | ENC A | encoder signal |
@@ -57,7 +55,7 @@ These pin assignments are based on the current provided table and may be refined
   - `arduino-opto` via I2C
   - Nextion display via USART
 
-### Unassigned / not yet defined
+### Unassigned
 - D11
 - A0, A1, A2, A3, A5, A6, A7
 
@@ -82,7 +80,7 @@ These pin assignments are based on the current provided table and may be refined
 - It produces digital pulses corresponding to shaft rotation
 - These pulses are used to calculate rotational speed (RPM)
 
-### Unassigned / not yet defined
+### Unassigned
 - D0, D1, D2, D3, D5, D6, D7, D8, D9, D10, D11, D12, D13
 - A0, A1, A2, A3, A5, A6, A7
 
@@ -92,21 +90,9 @@ These pin assignments are based on the current provided table and may be refined
 
 ### I2C
 All three Nano boards use I2C communication.
+The two INA sensors also communicate over I2C and share the same SDA/SCL bus as the connected Arduino.
 
 | Arduino Pin | AVR Pin | Function |
 |---|---|---|
 | A4 | PC4 / SDA | I2C SDA |
 | A5 | PC5 / SCL | I2C SCL |
-
-### Notes
-- The provided table explicitly marks I2C usage on A4 for all three boards
-- Standard Nano I2C also uses A5 as SCL
-
----
-
-## Important notes
-
-- This file reflects the currently available pinout information
-- Some assignments are still incomplete or not fully confirmed
-- Unassigned pins should not be assumed to be free for use without checking updated hardware plans
-- If pin mappings change, update this document before changing code
