@@ -27,21 +27,21 @@ Main responsibilities:
 - communication with the Nextion display
 - handling unified start/stop commands
 - requesting setup/input values from the Nextion display when needed
-- collecting measurement data from the other boards
+- collecting RPM/status data from the worker boards
+- reading voltage/current data directly from the two INA226 sensors
 - storing/calculating final datapoints
+
+The two INA226 sensors are used to measure electrical values for:
+- the Motor Under Test
+- the Load Motor / testing motor
 
 ### `arduino-measurement`
 
 Main responsibilities:
 - motor-driving/PWM logic for the Motor Under Test
-- communication with the two INA226 sensors
-- reading voltage/current data from the INA226 sensors
-- measurement-related preprocessing/averaging when needed
-- sending measurement data/status to `arduino-main`
+- applying PWM/duty-cycle commands received from `arduino-main`
 
-The two INA226 sensors are used to measure electrical values for:
-- the Motor Under Test
-- the Load Motor / testing motor
+
 
 ### `arduino-opto`
 
@@ -77,7 +77,7 @@ Notes:
 - All I2C devices on the same bus must use unique addresses.
 - `arduino-main` owns high-level coordination and requests data from the other boards.
 - The Nextion display is used for user input/status display; it should not own the test sequence.
-- The INA226 sensors provide voltage/current measurement data to `arduino-measurement`.
+- The INA226 sensors provide voltage/current measurement data to `arduino-main`.
 
 ---
 
@@ -102,13 +102,13 @@ The high-level runtime flow is owned by `arduino-main`.
    - first measurement step is prepared
 
 3. `RUN_MEASUREMENT_CYCLE`
-   - one complete datapoint is measured
    - `arduino-main` sends the PWM value to `arduino-measurement`
+   - `arduino-measurement` applies the requested PWM output
    - system waits for the motor to stabilize
-   - `arduino-measurement` and `arduino-opto` complete their measurements
-   - `arduino-main` requests voltage/current data from `arduino-measurement`
+   - `arduino-main` reads voltage/current data directly from the INA226 sensors
+   - `arduino-opto` complete their measurements
    - `arduino-main` requests RPM data from `arduino-opto`
-   - `arduino-main` processes the received data
+   - `arduino-main` processes the measured and received data
    - calculated values are produced, such as effective voltage, electrical power, and estimated torque
    - the completed datapoint is stored
 
@@ -137,8 +137,8 @@ The Nextion display should not own the measurement sequence or decide runtime ph
 
 ### Runtime control rules
 
-- `arduino-main` owns the state machine and all high-level phase transitions.
-- `arduino-measurement` acts as a worker board for PWM control and INA226 voltage/current measurement.
+- `arduino-main` owns the state machine and all high-level phase transitions and takes INA226 voltage/current measurement.
+- `arduino-measurement` acts as a worker board for PWM control.
 - `arduino-opto` acts as a worker board for optocoupler/encoder pulse handling and RPM measurement.
 - Stop handling should remain available during active measurement phases.
 
@@ -178,9 +178,9 @@ Both modes should reuse the same basic measurement cycle:
 
 1. Set duty cycle value.
 2. Wait for motor behavior to stabilize.
-3. Measure voltage/current on `arduino-measurement`.
+3. Measure voltage/current on `arduino-main`.
 4. Measure RPM on `arduino-opto`.
-5. Send measurement results back to `arduino-main`.
+5. Send worker-board status/RPM results back to `arduino-main`.
 6. Process the received data on `arduino-main`.
 7. Store the completed datapoint.
 

@@ -12,12 +12,12 @@ This document defines the current pin assignments for the three Arduino Nano boa
 |---|---|---|---|
 | D6 | PD6 | PWM EnB | PWM output |
 | A0 | PC0 | Analog voltage input from motor | via RC bridge |
-| A4 | PC4 / SDA | I2C | communication with other Nanos |
-| A5 | PC5 / SCL | I2C | communication with other Nanos |
+| A4 | PC4 / SDA | I2C | communication with main Arduino |
+| A5 | PC5 / SCL | I2C | communication with main Arduino |
 
 ### Unassigned
 - D0, D1, D2, D3, D4, D5, D7, D8, D9, D10, D11, D12, D13
-- A1, A2, A3, A5, A6, A7
+- A1, A2, A3, A6, A7
 
 ---
 
@@ -35,8 +35,8 @@ This document defines the current pin assignments for the three Arduino Nano boa
 | D7 | PD7 | STOP button LED | input, active HIGH |
 | D12 | PB4 | Software serial to USB host TX | software serial |
 | D13 | PB5 | Software serial to USB host RX | software serial |
-| A4 | PC4 / SDA | I2C | communication with other Nanos |
-| A5 | PC5 / SCL | I2C | communication with other Nanos |
+| A4 | PC4 / SDA | I2C | communication with other Nanos and INA226 sensors |
+| A5 | PC5 / SCL | I2C | communication with other Nanos and INA226 sensors |
 
 ### Additional notes
 - Main controller / head Arduino
@@ -49,7 +49,7 @@ This document defines the current pin assignments for the three Arduino Nano boa
 
 ### Unassigned
 - D2, D5, D8, D9, D10, D11
-- A0, A1, A2, A3, A5, A6, A7
+- A0, A1, A2, A3, A6, A7
 
 ---
 
@@ -60,8 +60,8 @@ This document defines the current pin assignments for the three Arduino Nano boa
 | Arduino Pin | AVR Pin | Function | Notes |
 |---|---|---|---|
 | D4 | PD4 | Encoder pulse input (optocoupler) | digital input, pulses from encoder wheel for RPM measurement |
-| A4 | PC4 / SDA | I2C | communication with other Nanos |
-| A5 | PC5 / SCL | I2C | communication with other Nanos |
+| A4 | PC4 / SDA | I2C | communication with main Arduino |
+| A5 | PC5 / SCL | I2C | communication with main Arduino |
 
 ### Additional notes
 - Handles optocoupler-related functionality
@@ -74,7 +74,7 @@ This document defines the current pin assignments for the three Arduino Nano boa
 
 ### Unassigned
 - D0, D1, D2, D3, D5, D6, D7, D8, D9, D10, D11, D12, D13
-- A0, A1, A2, A3, A5, A6, A7
+- A0, A1, A2, A3, A6, A7
 
 ---
 
