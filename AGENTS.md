@@ -241,19 +241,22 @@ Manual mode should still use the same shared measurement cycle for each tested d
 
 ---
 
-## Engineering Principles
+## Implementation Principles
 
 This is a small second-semester embedded project. The main priority is a simple, understandable, and easy-to-work-with implementation.
 
 When implementing code:
+- implement the requested instructions in the simplest reasonable way
 - keep the logic simple and readable
 - prefer clear, direct solutions over highly abstract designs
+- avoid adding extra features, abstractions, or complexity unless explicitly requested
 - make the code easy to debug and explain
 - keep board responsibilities clear
-- modify only files relevant to the requested task
+- modify only files relevant to the requested tasktask
 
 Language/style:
-- use C++ in the Arduino environment
+- use C++ with the Arduino framework
+- use straightforward Arduino-style code where appropriate
 - avoid advanced C++ patterns unless they clearly make the code simpler
 
 ---
