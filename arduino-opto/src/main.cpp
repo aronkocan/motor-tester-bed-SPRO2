@@ -122,13 +122,12 @@ void updateRpmMeasurement() {
 
     const unsigned long elapsedMs = millis() - measurementStartMs;
     if (elapsedMs >= MEASUREMENT_WINDOW_MS) {
-        measurementIsRunning = false;
-
         const float elapsedMinutes = elapsedMs / 60000.0f;
         const float rotations = pulseCount / static_cast<float>(ENCODER_HOLES);
         const float rpm = rotations / elapsedMinutes;
 
         storeLatestRpm(rpm);
+        measurementIsRunning = false;
     }
 }
 
