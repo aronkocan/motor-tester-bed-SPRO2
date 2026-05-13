@@ -58,6 +58,7 @@ On Arduino Nano / ATmega328P boards:
 |---|---:|---|---|
 | `CMD_TAKE_RPM_MEASUREMENT` | `0x10` | main → opto | Start a new RPM measurement window |
 | `CMD_GET_RPM` | `0x11` | main → opto | Request the latest completed RPM result |
+| `CMD_IS_MEASUREMENT_RUNNING` | `0x12` | main → opto | Request whether the RPM measurement window is still running |
 
 ---
 
@@ -88,3 +89,57 @@ Meaning:
 ```text
 Set PWM output to 128, approximately 50% duty cycle.
 ```
+
+### `CMD_TAKE_RPM_MEASUREMENT`
+
+Direction: `arduino-main` → `arduino-opto`
+
+Purpose: start a new RPM measurement window on the optocoupler board.
+
+Size: 1 byte
+
+| Byte | Field | Type | Description |
+|---:|---|---|---|
+| 0 | command ID | `uint8_t` | `CMD_TAKE_RPM_MEASUREMENT` |
+
+### `CMD_IS_MEASUREMENT_RUNNING`
+
+Direction: `arduino-main` → `arduino-opto`, then `arduino-main` reads 1 byte from `arduino-opto`
+
+Purpose: check whether the latest RPM measurement window is still running before requesting the completed RPM value.
+
+Command size: 1 byte
+Response size: 1 byte
+
+Command layout:
+
+| Byte | Field | Type | Description |
+|---:|---|---|---|
+| 0 | command ID | `uint8_t` | `CMD_IS_MEASUREMENT_RUNNING` |
+
+Response layout:
+
+| Byte | Field | Type | Description |
+|---:|---|---|---|
+| 0 | status | `uint8_t` | `1` = measurement is running, `0` = measurement is not running |
+
+### `CMD_GET_RPM`
+
+Direction: `arduino-main` → `arduino-opto`, then `arduino-main` reads 4 bytes from `arduino-opto`
+
+Purpose: request the latest completed RPM result after the measurement is no longer running.
+
+Command size: 1 byte
+Response size: 4 bytes
+
+Command layout:
+
+| Byte | Field | Type | Description |
+|---:|---|---|---|
+| 0 | command ID | `uint8_t` | `CMD_GET_RPM` |
+
+Response layout:
+
+| Byte | Field | Type | Description |
+|---:|---|---|---|
+| 0-3 | RPM | `float` | latest completed RPM value as 4 raw bytes |
