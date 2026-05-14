@@ -148,23 +148,23 @@ The Nextion display should not own the measurement sequence or decide runtime ph
 
 Completed measurement output should be represented as datapoints.
 
-Each datapoint contains:
+Each datapoint contains compact integer values to reduce memory use on the Arduino Nano:
 
 - duty cycle step
-- effective voltage
-- torque
-- power
-- RPM
+- effective voltage in millivolts
+- torque in millinewton-meters
+- power in milliwatts
+- RPM as a whole-number value
 
-The intended output data structure should represent one completed measurement point. Example concept:
+The intended output data structure should represent one completed measurement point. Prefer fixed-unit integer fields instead of `float` fields so each stored datapoint uses less memory. Example concept:
 
 ```cpp
 struct MeasurementDataPoint {
     uint8_t dutyCycleStep;
-    float effectiveVoltage;
-    float torque;
-    float power;
-    float rpm;
+    uint16_t effectiveVoltageMilliVolt;
+    uint16_t torqueMilliNewtonMeter;
+    uint16_t powerMilliWatt;
+    uint16_t rpm;
 };
 ```
 
@@ -219,7 +219,7 @@ User setup:
 Example:
 - selected target type: RPM
 - target value: 300 RPM
-- goal: find the duty cycle where the motor reaches approximately 300 RPM, then store the resulting measurement as a complete `MeasurementDataPoint` containing duty cycle step, effective voltage, torque, power, and RPM
+- goal: find the duty cycle where the motor reaches approximately 300 RPM, then store the resulting measurement as a complete `MeasurementDataPoint` containing duty cycle step, effective voltage in millivolts, torque in millinewton-meters, power in milliwatts, and whole-number RPM
 
 Because duty cycle is discrete and motor behavior is not perfectly exact, the target value does not need to be reached exactly. A configurable tolerance/margin should be used.
 
