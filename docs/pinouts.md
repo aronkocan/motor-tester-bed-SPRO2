@@ -48,7 +48,7 @@ This document defines the current pin assignments for the three Arduino Nano boa
   - INA226_2: Sensor for Load Motor / testing motor via I2C
 
 ### Unassigned
-- D2, D5, D8, D9, D10, D11
+- D4, D5, D8, D9, D10, D11
 - A0, A1, A2, A3, A6, A7
 
 ---
