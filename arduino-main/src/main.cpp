@@ -59,11 +59,13 @@ const uint8_t MAX_DATA_POINTS = 51;
 // Global Runtime Data
 // =======================
 
-MainState currentState = MainState::WAIT_FOR_SETUP;
+volatile MainState currentState = MainState::WAIT_FOR_SETUP;
 MeasurementMode currentMeasurementMode = MeasurementMode::AUTOMATIC;
 MeasurementDataPoint dataPoints[MAX_DATA_POINTS];
 uint8_t dataPointCount = 0;
 uint8_t currentDutyCycle = 0;
+volatile bool startButtonInterruptFlag = false;
+volatile bool stopButtonInterruptFlag = false;
 
 // =======================
 // Function Declarations
@@ -71,7 +73,9 @@ uint8_t currentDutyCycle = 0;
 
 void initializeSystem();
 void runStateMachine();
-void handleStopButton();
+void handleButtonInterruptFlags();
+void handleStartButtonInterrupt();
+void handleStopButtonInterrupt();
 void enterState(MainState nextState);
 
 void handleWaitForSetupState();
@@ -105,7 +109,7 @@ void setup() {
 }
 
 void loop() {
-    handleStopButton();
+    handleButtonInterruptFlags();
     runStateMachine();
 }
 
@@ -172,9 +176,51 @@ void handleErrorState() {
 // =======================
 
 void initializeSystem() {
+    pinMode(START_BUTTON_PIN, INPUT);
+    pinMode(STOP_BUTTON_PIN, INPUT);
+    pinMode(START_LED_PIN, OUTPUT);
+    pinMode(STOP_LED_PIN, OUTPUT);
+
+    attachInterrupt(digitalPinToInterrupt(START_BUTTON_PIN), handleStartButtonInterrupt, RISING);
+    attachInterrupt(digitalPinToInterrupt(STOP_BUTTON_PIN), handleStopButtonInterrupt, RISING);
 }
 
-void handleStopButton() {
+void handleStartButtonInterrupt() {
+    if (currentState == MainState::WAIT_FOR_SETUP) {
+        startButtonInterruptFlag = true;
+    }
+}
+
+void handleStopButtonInterrupt() {
+    if (currentState != MainState::WAIT_FOR_SETUP) {
+        stopButtonInterruptFlag = true;
+    }
+}
+
+void handleButtonInterruptFlags() {
+    bool shouldStart = false;
+    bool shouldStop = false;
+
+    noInterrupts();
+    if (startButtonInterruptFlag) {
+        startButtonInterruptFlag = false;
+        shouldStart = true;
+    }
+    if (stopButtonInterruptFlag) {
+        stopButtonInterruptFlag = false;
+        shouldStop = true;
+    }
+    interrupts();
+
+    if (shouldStop) {
+        stopMeasurementMotor();
+        enterState(MainState::WAIT_FOR_SETUP);
+        return;
+    }
+
+    if (shouldStart && currentState == MainState::WAIT_FOR_SETUP) {
+        enterState(MainState::PREPARE_TEST);
+    }
 }
 
 void sendMeasurementPwm(uint8_t pwmValue) {
