@@ -125,12 +125,12 @@ Response layout:
 
 ### `CMD_GET_RPM`
 
-Direction: `arduino-main` → `arduino-opto`, then `arduino-main` reads 4 bytes from `arduino-opto`
+Direction: `arduino-main` → `arduino-opto`, then `arduino-main` reads 2 bytes from `arduino-opto`
 
 Purpose: request the latest completed RPM result after the measurement is no longer running.
 
 Command size: 1 byte
-Response size: 4 bytes
+Response size: 2 bytes
 
 Command layout:
 
@@ -142,4 +142,5 @@ Response layout:
 
 | Byte | Field | Type | Description |
 |---:|---|---|---|
-| 0-3 | RPM | `float` | latest completed RPM value as 4 raw bytes |
+| 0 | RPM low byte | `uint8_t` | low byte of the latest completed whole-number RPM value |
+| 1 | RPM high byte | `uint8_t` | high byte of the latest completed whole-number RPM value |
