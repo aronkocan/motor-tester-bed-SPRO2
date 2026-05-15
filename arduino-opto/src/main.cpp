@@ -124,7 +124,7 @@ void updateRpmMeasurement() {
         const float rpm = rotations / elapsedMinutes;
         uint16_t roundedRpm = 0;
 
-        if (rpm >= UINT16_MAX) {
+        if (rpm >= (static_cast<float>(UINT16_MAX) - 0.5f)) {
             roundedRpm = UINT16_MAX;
         } else {
             roundedRpm = static_cast<uint16_t>(rpm + 0.5f);
