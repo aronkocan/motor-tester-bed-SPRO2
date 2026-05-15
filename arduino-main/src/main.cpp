@@ -66,6 +66,8 @@ uint8_t dataPointCount = 0;
 uint8_t currentDutyCycle = 0;
 volatile bool startButtonInterruptFlag = false;
 volatile bool stopButtonInterruptFlag = false;
+bool optoMeasurementIsRunning = false;
+uint16_t latestOptoRpm = 0;
 
 // =======================
 // Function Declarations
@@ -94,7 +96,7 @@ void stopMeasurementMotor();
 void waitForMotorToStabilize();
 void startOptoRpmMeasurement();
 bool isOptoMeasurementRunning();
-float readOptoRpm();
+uint16_t readOptoRpm();
 void readElectricalMeasurements();
 void calculateTorque();
 void calculatePower();
@@ -194,6 +196,8 @@ void initializeSystem() {
     pinMode(START_LED_PIN, OUTPUT);
     pinMode(STOP_LED_PIN, OUTPUT);
 
+    Wire.begin();
+
     attachInterrupt(digitalPinToInterrupt(START_BUTTON_PIN), handleStartButtonInterrupt, RISING);
     attachInterrupt(digitalPinToInterrupt(STOP_BUTTON_PIN), handleStopButtonInterrupt, RISING);
 }
@@ -255,21 +259,58 @@ void prepareMeasurementStep() {
 // =====================================
 
 void sendDutyCycleToMeasurementBoard() {
+    Wire.beginTransmission(MEASUREMENT_I2C_ADDRESS);
+    Wire.write(CMD_SET_PWM);
+    Wire.write(currentDutyCycle);
+    Wire.endTransmission();
 }
 
 void stopMeasurementMotor() {
+    currentDutyCycle = 0;
+
+    Wire.beginTransmission(MEASUREMENT_I2C_ADDRESS);
+    Wire.write(CMD_STOP_MOTOR);
+    Wire.endTransmission();
 }
 
 void waitForMotorToStabilize() {
+    delay(1000);
 }
 
 void startOptoRpmMeasurement() {
+    Wire.beginTransmission(OPTO_I2C_ADDRESS);
+    Wire.write(CMD_TAKE_RPM_MEASUREMENT);
+    Wire.endTransmission();
+
+    optoMeasurementIsRunning = true;
 }
 
 bool isOptoMeasurementRunning() {
+    Wire.beginTransmission(OPTO_I2C_ADDRESS);
+    Wire.write(CMD_IS_MEASUREMENT_RUNNING);
+    Wire.endTransmission();
+
+    Wire.requestFrom(OPTO_I2C_ADDRESS, static_cast<uint8_t>(1));
+    if (Wire.available() >= 1) {
+        optoMeasurementIsRunning = (Wire.read() == 1);
+    }
+
+    return optoMeasurementIsRunning;
 }
 
-float readOptoRpm() {
+uint16_t readOptoRpm() {
+    Wire.beginTransmission(OPTO_I2C_ADDRESS);
+    Wire.write(CMD_GET_RPM);
+    Wire.endTransmission();
+
+    Wire.requestFrom(OPTO_I2C_ADDRESS, static_cast<uint8_t>(2));
+    if (Wire.available() >= 2) {
+        const uint8_t lowRpmByte = Wire.read();
+        const uint8_t highRpmByte = Wire.read();
+        latestOptoRpm = static_cast<uint16_t>(lowRpmByte) | (static_cast<uint16_t>(highRpmByte) << 8);
+    }
+
+    return latestOptoRpm;
 }
 
 void readElectricalMeasurements() {
