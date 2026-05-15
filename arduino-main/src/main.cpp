@@ -85,20 +85,28 @@ void handleEvaluateNextStepState();
 void handleOutputResultsState();
 void handleErrorState();
 
-void sendMeasurementPwm(uint8_t pwmValue);
+void resetPreviousMeasurement();
+void getSetupInformationFromNextion();
+void prepareMeasurementStep();
+
+void sendDutyCycleToMeasurementBoard();
 void stopMeasurementMotor();
+void waitForMotorToStabilize();
 void startOptoRpmMeasurement();
 bool isOptoMeasurementRunning();
 float readOptoRpm();
+void readElectricalMeasurements();
+void calculateTorque();
+void calculatePower();
+void calculateEffectiveVoltage();
+void storeCompletedMeasurementDataPoint();
 
-void resetMeasurementData();
-void storeCurrentDataPoint(float rpm);
-uint16_t clampFloatToUInt16(float value);
+void evaluateAutomaticMeasurementProgress();
+void evaluateManualTargetMeasurementProgress();
+void selectNextMeasurementStep();
 
-void updateNextionStatus();
-bool readSetupFromNextion();
-uint16_t readMotorVoltageMilliVolt();
-uint16_t readMotorCurrentMilliAmp();
+void outputResultsToNextion();
+void exportResultsUSB();
 
 // =======================
 // Setup / Loop
@@ -157,6 +165,11 @@ void handleWaitForSetupState() {
 }
 
 void handlePrepareTestState() {
+    resetPreviousMeasurement();
+    getSetupInformationFromNextion();
+    prepareMeasurementStep();
+
+    enterState(MainState::RUN_MEASUREMENT_CYCLE);
 }
 
 void handleRunMeasurementCycleState() {
@@ -172,7 +185,7 @@ void handleErrorState() {
 }
 
 // =======================
-// Function Stubs
+// Function Implementations
 // =======================
 
 void initializeSystem() {
@@ -223,10 +236,31 @@ void handleButtonInterruptFlags() {
     }
 }
 
-void sendMeasurementPwm(uint8_t pwmValue) {
+// ============================
+// Prepare Test State functions
+// ============================
+
+void resetPreviousMeasurement() {
+}
+
+void getSetupInformationFromNextion() {
+    // This includes getting the information, validating it and storing it
+}
+
+void prepareMeasurementStep() {
+}
+
+// =====================================
+// Run Measurement Cycle State functions
+// =====================================
+
+void sendDutyCycleToMeasurementBoard() {
 }
 
 void stopMeasurementMotor() {
+}
+
+void waitForMotorToStabilize() {
 }
 
 void startOptoRpmMeasurement() {
@@ -238,23 +272,44 @@ bool isOptoMeasurementRunning() {
 float readOptoRpm() {
 }
 
-void resetMeasurementData() {
+void readElectricalMeasurements() {
 }
 
-void storeCurrentDataPoint(float rpm) {
+void calculateTorque() {
 }
 
-uint16_t clampFloatToUInt16(float value) {
+void calculatePower() {
 }
 
-void updateNextionStatus() {
+void calculateEffectiveVoltage() {
 }
 
-bool readSetupFromNextion() {
+void storeCompletedMeasurementDataPoint() {
 }
 
-uint16_t readMotorVoltageMilliVolt() {
+// ==================================
+// Evaluate Next Step State functions
+// ==================================
+
+void evaluateAutomaticMeasurementProgress() {
 }
 
-uint16_t readMotorCurrentMilliAmp() {
+void evaluateManualTargetMeasurementProgress() {
 }
+
+void selectNextMeasurementStep() {
+}
+
+// ==============================
+// Output Results State functions
+// ==============================
+
+void outputResultsToNextion() {
+}
+
+void exportResultsUSB() {
+}
+
+// ============================
+// Error State functions
+// ============================
