@@ -18,7 +18,7 @@ const unsigned long MEASUREMENT_WINDOW_MS = 1000;
 
 volatile bool shouldStartMeasurement = false;
 volatile uint8_t lastRequestedCommand = 0;
-volatile uint8_t latestRpmBytes[sizeof(float)] = {0, 0, 0, 0};
+volatile uint16_t latestRpm = 0;
 
 volatile bool measurementIsRunning = false;
 unsigned long measurementStartMs = 0;
@@ -29,7 +29,7 @@ void receiveI2cCommand(int byteCount);
 void sendI2cResponse();
 void startRpmMeasurement();
 void updateRpmMeasurement();
-void storeLatestRpm(float rpm);
+void storeLatestRpm(uint16_t rpm);
 
 void setup() {
     pinMode(ENCODER_PULSE_PIN, INPUT_PULLUP);
@@ -66,7 +66,7 @@ void receiveI2cCommand(int byteCount) {
             break;
 
         case CMD_GET_RPM:
-            // The next I2C read from arduino-main will receive latestRpmBytes.
+            // The next I2C read from arduino-main will receive latestRpm as 2 bytes.
             break;
 
         case CMD_IS_MEASUREMENT_RUNNING:
@@ -85,13 +85,10 @@ void receiveI2cCommand(int byteCount) {
 
 void sendI2cResponse() {
     if (lastRequestedCommand == CMD_GET_RPM) {
-        uint8_t rpmBytes[sizeof(float)];
+        const uint16_t rpm = latestRpm;
 
-        for (uint8_t i = 0; i < sizeof(float); i++) {
-            rpmBytes[i] = latestRpmBytes[i];
-        }
-
-        Wire.write(rpmBytes, sizeof(rpmBytes));
+        Wire.write(static_cast<uint8_t>(rpm & 0xFF));
+        Wire.write(static_cast<uint8_t>((rpm >> 8) & 0xFF));
     } else if (lastRequestedCommand == CMD_IS_MEASUREMENT_RUNNING) {
         const uint8_t status = (measurementIsRunning || shouldStartMeasurement) ? 1 : 0;
         Wire.write(status);
@@ -125,23 +122,21 @@ void updateRpmMeasurement() {
         const float elapsedMinutes = elapsedMs / 60000.0f;
         const float rotations = pulseCount / static_cast<float>(ENCODER_HOLES);
         const float rpm = rotations / elapsedMinutes;
+        uint16_t roundedRpm = 0;
 
-        storeLatestRpm(rpm);
+        if (rpm >= (static_cast<float>(UINT16_MAX) - 0.5f)) {
+            roundedRpm = UINT16_MAX;
+        } else {
+            roundedRpm = static_cast<uint16_t>(rpm + 0.5f);
+        }
+
+        storeLatestRpm(roundedRpm);
         measurementIsRunning = false;
     }
 }
 
-void storeLatestRpm(float rpm) {
-    union {
-        float value;
-        uint8_t bytes[sizeof(float)];
-    } rpmData;
-
-    rpmData.value = rpm;
-
+void storeLatestRpm(uint16_t rpm) {
     noInterrupts();
-    for (uint8_t i = 0; i < sizeof(float); i++) {
-        latestRpmBytes[i] = rpmData.bytes[i];
-    }
+    latestRpm = rpm;
     interrupts();
 }
