@@ -632,6 +632,7 @@ void evaluateAutomaticMeasurementProgress() {
         return;
     }
 
+    stopMeasurementMotor();
     enterState(MainState::OUTPUT_RESULTS);
 }
 
