@@ -23,6 +23,14 @@ enum class MeasurementMode {
     MANUAL_TARGET
 };
 
+enum class ManualTargetType {
+    POWER,
+    TORQUE,
+    RPM,
+    EFFECTIVE_VOLTAGE,
+    DUTY_CYCLE
+};
+
 // =======================
 // Measurement Data
 // =======================
@@ -55,6 +63,20 @@ const uint8_t CMD_TAKE_RPM_MEASUREMENT = 0x10;
 const uint8_t CMD_GET_RPM = 0x11;
 const uint8_t CMD_IS_MEASUREMENT_RUNNING = 0x12;
 
+const uint8_t NEXTION_MODE_AUTOMATIC = 0;
+const uint8_t NEXTION_MODE_MANUAL = 1;
+const uint8_t NEXTION_TARGET_POWER = 0;
+const uint8_t NEXTION_TARGET_TORQUE = 1;
+const uint8_t NEXTION_TARGET_RPM = 2;
+const uint8_t NEXTION_TARGET_EFFECTIVE_VOLTAGE = 3;
+const uint8_t NEXTION_TARGET_DUTY_CYCLE = 4;
+const uint8_t NEXTION_NUMBER_RESPONSE = 0x71;
+const uint8_t NEXTION_END_BYTE = 0xFF;
+const uint8_t NEXTION_MAX_PWM_VALUE = 255;
+const uint16_t NEXTION_READ_TIMEOUT_MS = 500;
+const unsigned long NEXTION_BAUD_RATE = 9600;
+const float NEXTION_SCALED_VALUE_DIVISOR = 100.0f;
+
 const uint8_t MAX_DATA_POINTS = 51;
 const unsigned long MOTOR_STABILIZATION_TIME_MS = 1000;
 const unsigned long MOTOR_STABILIZATION_STOP_POLL_INTERVAL_MS = 10;
@@ -70,6 +92,11 @@ const float PI_VALUE = 3.14159265f;
 
 volatile MainState currentState = MainState::WAIT_FOR_SETUP;
 MeasurementMode currentMeasurementMode = MeasurementMode::AUTOMATIC;
+ManualTargetType selectedManualTargetType = ManualTargetType::RPM;
+uint8_t automaticIntervalMinimum = 0;
+uint8_t automaticIntervalMaximum = 0;
+uint8_t automaticStepSize = 1;
+float manualTargetValue = 0.0f;
 MeasurementDataPoint dataPoints[MAX_DATA_POINTS];
 uint8_t dataPointCount = 0;
 uint8_t currentDutyCycle = 0;
@@ -109,6 +136,9 @@ void handleOutputResultsState();
 
 void resetPreviousMeasurement();
 void getSetupInformationFromNextion();
+uint32_t requestNextionNumber(const char *componentPath);
+void sendNextionCommand(const char *command);
+uint8_t limitNextionValueToByte(uint32_t value);
 void prepareMeasurementStep();
 
 void sendDutyCycleToMeasurementBoard();
@@ -237,6 +267,7 @@ void initializeSystem() {
     pinMode(STOP_LED_PIN, OUTPUT);
 
     Wire.begin();
+    Serial.begin(NEXTION_BAUD_RATE);
 
     motorUnderTestIna226.begin();
     loadMotorIna226.begin();
@@ -294,7 +325,109 @@ void resetPreviousMeasurement() {
 }
 
 void getSetupInformationFromNextion() {
-    // This includes getting the information, validating it and storing it
+    const uint32_t selectedMode = requestNextionNumber("setup.mode.val");
+
+    if (selectedMode == NEXTION_MODE_MANUAL) {
+        currentMeasurementMode = MeasurementMode::MANUAL_TARGET;
+    } else {
+        currentMeasurementMode = MeasurementMode::AUTOMATIC;
+    }
+
+    if (currentMeasurementMode == MeasurementMode::AUTOMATIC) {
+        automaticIntervalMinimum = limitNextionValueToByte(requestNextionNumber("range.n0.val"));
+        automaticIntervalMaximum = limitNextionValueToByte(requestNextionNumber("range.n1.val"));
+        automaticStepSize = limitNextionValueToByte(requestNextionNumber("range.n2.val"));
+
+        if (automaticIntervalMinimum > automaticIntervalMaximum) {
+            const uint8_t oldMinimum = automaticIntervalMinimum;
+            automaticIntervalMinimum = automaticIntervalMaximum;
+            automaticIntervalMaximum = oldMinimum;
+        }
+
+        if (automaticStepSize == 0) {
+            automaticStepSize = 1;
+        }
+
+        return;
+    }
+
+    const uint32_t selectedTargetType = requestNextionNumber("target.tarsel.val");
+
+    if (selectedTargetType == NEXTION_TARGET_POWER) {
+        selectedManualTargetType = ManualTargetType::POWER;
+        manualTargetValue = static_cast<float>(requestNextionNumber("target.power.val"));
+    } else if (selectedTargetType == NEXTION_TARGET_TORQUE) {
+        selectedManualTargetType = ManualTargetType::TORQUE;
+        manualTargetValue = static_cast<float>(requestNextionNumber("ttorque.x0.val")) / NEXTION_SCALED_VALUE_DIVISOR;
+    } else if (selectedTargetType == NEXTION_TARGET_EFFECTIVE_VOLTAGE) {
+        selectedManualTargetType = ManualTargetType::EFFECTIVE_VOLTAGE;
+        manualTargetValue = static_cast<float>(requestNextionNumber("teff.x0.val")) / NEXTION_SCALED_VALUE_DIVISOR;
+    } else if (selectedTargetType == NEXTION_TARGET_DUTY_CYCLE) {
+        selectedManualTargetType = ManualTargetType::DUTY_CYCLE;
+        manualTargetValue = static_cast<float>(requestNextionNumber("tduty.n0.val"));
+    } else {
+        selectedManualTargetType = ManualTargetType::RPM;
+        manualTargetValue = static_cast<float>(requestNextionNumber("trpm.n0.val"));
+    }
+}
+
+uint32_t requestNextionNumber(const char *componentPath) {
+    Serial.print("get ");
+    sendNextionCommand(componentPath);
+
+    const unsigned long startTimeMs = millis();
+    while ((millis() - startTimeMs) < NEXTION_READ_TIMEOUT_MS) {
+        if (Serial.available() <= 0) {
+            continue;
+        }
+
+        if (Serial.read() != NEXTION_NUMBER_RESPONSE) {
+            continue;
+        }
+
+        uint8_t valueBytes[4] = {0, 0, 0, 0};
+        for (uint8_t i = 0; i < 4; i++) {
+            while (Serial.available() <= 0) {
+                if ((millis() - startTimeMs) >= NEXTION_READ_TIMEOUT_MS) {
+                    return 0;
+                }
+            }
+
+            valueBytes[i] = Serial.read();
+        }
+
+        for (uint8_t i = 0; i < 3; i++) {
+            while (Serial.available() <= 0) {
+                if ((millis() - startTimeMs) >= NEXTION_READ_TIMEOUT_MS) {
+                    return 0;
+                }
+            }
+
+            Serial.read();
+        }
+
+        return static_cast<uint32_t>(valueBytes[0]) |
+               (static_cast<uint32_t>(valueBytes[1]) << 8) |
+               (static_cast<uint32_t>(valueBytes[2]) << 16) |
+               (static_cast<uint32_t>(valueBytes[3]) << 24);
+    }
+
+    return 0;
+}
+
+void sendNextionCommand(const char *command) {
+    Serial.print(command);
+    Serial.write(NEXTION_END_BYTE);
+    Serial.write(NEXTION_END_BYTE);
+    Serial.write(NEXTION_END_BYTE);
+}
+
+uint8_t limitNextionValueToByte(uint32_t value) {
+    if (value > NEXTION_MAX_PWM_VALUE) {
+        return NEXTION_MAX_PWM_VALUE;
+    }
+
+    return static_cast<uint8_t>(value);
 }
 
 void prepareMeasurementStep() {
