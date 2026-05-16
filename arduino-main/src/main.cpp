@@ -105,6 +105,7 @@ const uint8_t MANUAL_TARGET_TORQUE_MINIMUM_MARGIN_MNM = 2;
 const uint16_t MANUAL_TARGET_POWER_MINIMUM_MARGIN_MW = 100;
 const unsigned long MOTOR_STABILIZATION_TIME_MS = 1000;
 const unsigned long MOTOR_STABILIZATION_STOP_POLL_INTERVAL_MS = 10;
+const unsigned long STOP_LED_ON_TIME_MS = 2000;
 const char USB_EXPORT_FILE_NAME[] = "RESULT.CSV";
 
 const float INA226_MAX_EXPECTED_CURRENT_AMPERE = 20.0;
@@ -139,6 +140,7 @@ volatile bool stopButtonInterruptFlag = false;
 bool optoMeasurementIsRunning = false;
 uint16_t latestOptoRpm = 0;
 bool usbFlashDriveIsInitialized = false;
+unsigned long stopLedTurnOffTimeMs = 0;
 
 SoftwareSerial usbHostSerial(USB_HOST_RX_PIN, USB_HOST_TX_PIN);
 Ch376msc usbFlashDrive(usbHostSerial);
@@ -165,6 +167,9 @@ void handleButtonInterruptFlags();
 void handleStartButtonInterrupt();
 void handleStopButtonInterrupt();
 void enterState(MainState nextState);
+void updateStartLedForState();
+void turnOnStopLedForShortTime();
+void updateStopLedTimer();
 
 void handleWaitForSetupState();
 void handlePrepareTestState();
@@ -219,6 +224,7 @@ void setup() {
 void loop() {
     handleButtonInterruptFlags();
     runStateMachine();
+    updateStopLedTimer();
 }
 
 // =======================
@@ -251,6 +257,31 @@ void runStateMachine() {
 
 void enterState(MainState nextState) {
     currentState = nextState;
+    updateStartLedForState();
+}
+
+void updateStartLedForState() {
+    const bool measurementIsActive = currentState == MainState::PREPARE_TEST ||
+                                     currentState == MainState::RUN_MEASUREMENT_CYCLE ||
+                                     currentState == MainState::EVALUATE_NEXT_STEP;
+
+    digitalWrite(START_LED_PIN, measurementIsActive ? HIGH : LOW);
+}
+
+void turnOnStopLedForShortTime() {
+    digitalWrite(STOP_LED_PIN, HIGH);
+    stopLedTurnOffTimeMs = millis() + STOP_LED_ON_TIME_MS;
+}
+
+void updateStopLedTimer() {
+    if (stopLedTurnOffTimeMs == 0) {
+        return;
+    }
+
+    if (static_cast<long>(millis() - stopLedTurnOffTimeMs) >= 0) {
+        digitalWrite(STOP_LED_PIN, LOW);
+        stopLedTurnOffTimeMs = 0;
+    }
 }
 
 // =======================
@@ -329,6 +360,8 @@ void initializeSystem() {
     pinMode(STOP_BUTTON_PIN, INPUT);
     pinMode(START_LED_PIN, OUTPUT);
     pinMode(STOP_LED_PIN, OUTPUT);
+    digitalWrite(START_LED_PIN, LOW);
+    digitalWrite(STOP_LED_PIN, LOW);
 
     Wire.begin();
     Serial.begin(NEXTION_BAUD_RATE);
@@ -350,7 +383,7 @@ void handleStartButtonInterrupt() {
 }
 
 void handleStopButtonInterrupt() {
-    if (currentState != MainState::WAIT_FOR_SETUP) {
+    if (currentState != MainState::WAIT_FOR_SETUP && currentState != MainState::OUTPUT_RESULTS) {
         stopButtonInterruptFlag = true;
     }
 }
@@ -370,7 +403,8 @@ void handleButtonInterruptFlags() {
     }
     interrupts();
 
-    if (shouldStop) {
+    if (shouldStop && currentState != MainState::WAIT_FOR_SETUP && currentState != MainState::OUTPUT_RESULTS) {
+        turnOnStopLedForShortTime();
         stopMeasurementMotor();
         enterState(MainState::WAIT_FOR_SETUP);
         return;

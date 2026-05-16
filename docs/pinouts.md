@@ -31,8 +31,8 @@ This document defines the current pin assignments for the three Arduino Nano boa
 | D1 | PD1 / TX | Hardware serial to Nextion TX | USART |
 | D2 | PD2 | START button | input, active HIGH |
 | D3 | PD3 | STOP button | input, active HIGH |
-| D6 | PD6 | START button LED | input, active HIGH |
-| D7 | PD7 | STOP button LED | input, active HIGH |
+| D6 | PD6 | START button LED | output, active HIGH |
+| D7 | PD7 | STOP button LED | output, active HIGH |
 | D12 | PB4 | Software serial to USB host TX | software serial |
 | D13 | PB5 | Software serial to USB host RX | software serial |
 | A4 | PC4 / SDA | I2C | communication with other Nanos and INA226 sensors |
