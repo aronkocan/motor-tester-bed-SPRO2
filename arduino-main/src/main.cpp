@@ -106,6 +106,7 @@ const uint8_t MANUAL_TARGET_TORQUE_MINIMUM_MARGIN_MNM = 2;
 const uint16_t MANUAL_TARGET_POWER_MINIMUM_MARGIN_MW = 100;
 const unsigned long MOTOR_STABILIZATION_TIME_MS = 1000;
 const unsigned long MOTOR_STABILIZATION_STOP_POLL_INTERVAL_MS = 10;
+const unsigned long TEST_MOTOR_VOLTAGE_SAMPLE_TIME_MS = 5;
 const unsigned long STOP_LED_ON_TIME_MS = 2000;
 const char USB_EXPORT_FILE_NAME[] = "RESULT.CSV";
 
@@ -643,6 +644,8 @@ uint16_t readTestMotorVoltageMilliVoltFromMeasurementBoard() {
     Wire.beginTransmission(MEASUREMENT_I2C_ADDRESS);
     Wire.write(CMD_GET_TEST_MOTOR_VOLTAGE);
     Wire.endTransmission();
+
+    delay(TEST_MOTOR_VOLTAGE_SAMPLE_TIME_MS);
 
     Wire.requestFrom(MEASUREMENT_I2C_ADDRESS, static_cast<uint8_t>(2));
     if (Wire.available() >= 2) {

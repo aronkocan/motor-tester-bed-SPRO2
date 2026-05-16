@@ -20,6 +20,7 @@ const uint8_t TEST_MOTOR_VOLTAGE_DIVIDER_MULTIPLIER = 6;
 volatile bool hasPendingPwmValue = false;
 volatile uint8_t pendingPwmValue = 0;
 volatile uint8_t lastRequestedCommand = 0;
+volatile bool shouldReadTestMotorVoltage = true;
 volatile uint16_t latestTestMotorVoltageMilliVolt = 0;
 
 void receiveI2cCommand(int byteCount);
@@ -47,6 +48,18 @@ void loop() {
 
         setMotorPwm(pwmValue);
     }
+
+    if (shouldReadTestMotorVoltage) {
+        noInterrupts();
+        shouldReadTestMotorVoltage = false;
+        interrupts();
+
+        const uint16_t voltageMilliVolt = readTestMotorVoltageMilliVolt();
+
+        noInterrupts();
+        latestTestMotorVoltageMilliVolt = voltageMilliVolt;
+        interrupts();
+    }
 }
 
 void receiveI2cCommand(int byteCount) {
@@ -71,7 +84,8 @@ void receiveI2cCommand(int byteCount) {
             break;
 
         case CMD_GET_TEST_MOTOR_VOLTAGE:
-            latestTestMotorVoltageMilliVolt = readTestMotorVoltageMilliVolt();
+            // Keep the I2C callback short. The loop takes and caches the ADC sample.
+            shouldReadTestMotorVoltage = true;
             break;
 
         default:

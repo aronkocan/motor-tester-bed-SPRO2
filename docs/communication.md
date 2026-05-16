@@ -95,7 +95,7 @@ Set PWM output to 128, approximately 50% duty cycle.
 
 Direction: `arduino-main` → `arduino-measurement`, then `arduino-main` reads 2 bytes from `arduino-measurement`
 
-Purpose: request the current test-motor voltage measured by the `arduino-measurement` ADC on A0. The measurement board averages multiple ADC readings using the Arduino default 5 V ADC reference, then multiplies the averaged A0 voltage by 6 to compensate for the voltage divider. The returned value is the calculated real test-motor voltage in millivolts.
+Purpose: request the current test-motor voltage measured by the `arduino-measurement` ADC on A0. The command schedules ADC sampling on the measurement board main loop so the I2C receive callback stays short. The measurement board averages multiple ADC readings using the Arduino default 5 V ADC reference, then multiplies the averaged A0 voltage by 6 to compensate for the voltage divider. The returned value is the calculated real test-motor voltage in millivolts.
 
 Command size: 1 byte
 Response size: 2 bytes
