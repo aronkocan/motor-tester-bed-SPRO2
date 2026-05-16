@@ -9,9 +9,9 @@ This document defines the communication contract between the boards and I2C devi
 | Device | Role |
 |---|---|
 | `arduino-main` | Main coordinator / I2C master |
-| `arduino-measurement` | Worker board / I2C slave |
+| `arduino-measurement` | Worker board / I2C slave; provides A0 test-motor voltage readings |
 | `arduino-opto` | Worker board / I2C slave |
-| INA226 - Motor Under Test | I2C sensor / slave |
+| INA226 - Motor Under Test | I2C sensor / slave for current measurement |
 | INA226 - Load Motor | I2C sensor / slave |
 | Nextion display | USART HMI device |
 
@@ -36,9 +36,9 @@ On Arduino Nano / ATmega328P boards:
 
 | Device | Address | Notes |
 |---|---:|---|
-| `arduino-measurement` | `0x08` | Receives PWM/motor control commands |
+| `arduino-measurement` | `0x08` | Receives PWM/motor control commands and returns A0 voltage readings |
 | `arduino-opto` | `0x09` | Provides RPM data |
-| INA226 - Motor Under Test | `0x45` | Measures voltage/current for Motor Under Test |
+| INA226 - Motor Under Test | `0x45` | Measures current for Motor Under Test; voltage comes from arduino-measurement A0 |
 | INA226 - Load Motor | `0x40` | Measures voltage/current for Load Motor |
 
 ---
@@ -51,6 +51,7 @@ On Arduino Nano / ATmega328P boards:
 |---|---:|---|---|
 | `CMD_SET_PWM` | `0x01` | main → measurement | Set PWM duty cycle |
 | `CMD_STOP_MOTOR` | `0x02` | main → measurement | Stop motor output |
+| `CMD_GET_TEST_MOTOR_VOLTAGE` | `0x03` | main → measurement, then main reads response | Request latest test-motor ADC voltage from A0 |
 
 ### Commands for `arduino-opto`
 
@@ -89,6 +90,28 @@ Meaning:
 ```text
 Set PWM output to 128, approximately 50% duty cycle.
 ```
+
+### `CMD_GET_TEST_MOTOR_VOLTAGE`
+
+Direction: `arduino-main` → `arduino-measurement`, then `arduino-main` reads 2 bytes from `arduino-measurement`
+
+Purpose: request the current test-motor voltage measured by the `arduino-measurement` ADC on A0. The measurement board averages multiple ADC readings using the Arduino default 5 V ADC reference, then multiplies the averaged A0 voltage by 6 to compensate for the voltage divider. The returned value is the calculated real test-motor voltage in millivolts.
+
+Command size: 1 byte
+Response size: 2 bytes
+
+Command layout:
+
+| Byte | Field | Type | Description |
+|---:|---|---|---|
+| 0 | command ID | `uint8_t` | `CMD_GET_TEST_MOTOR_VOLTAGE` |
+
+Response layout:
+
+| Byte | Field | Type | Description |
+|---:|---|---|---|
+| 0 | voltage low byte | `uint8_t` | low byte of real test-motor voltage in millivolts |
+| 1 | voltage high byte | `uint8_t` | high byte of real test-motor voltage in millivolts |
 
 ### `CMD_TAKE_RPM_MEASUREMENT`
 

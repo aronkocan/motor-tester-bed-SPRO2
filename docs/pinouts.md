@@ -11,7 +11,7 @@ This document defines the current pin assignments for the three Arduino Nano boa
 | Arduino Pin | AVR Pin | Function | Notes |
 |---|---|---|---|
 | D6 | PD6 | PWM EnB | PWM output |
-| A0 | PC0 | Analog voltage input from motor | via RC bridge |
+| A0 | PC0 | Analog voltage input from test motor | via RC bridge and voltage divider; arduino-measurement averages ADC readings, multiplies by 6, and returns real voltage to arduino-main over I2C |
 | A4 | PC4 / SDA | I2C | communication with main Arduino |
 | A5 | PC5 / SCL | I2C | communication with main Arduino |
 
@@ -44,8 +44,9 @@ This document defines the current pin assignments for the three Arduino Nano boa
   - `arduino-measurement` via I2C
   - `arduino-opto` via I2C
   - Nextion display via USART
-  - INA226_1: Sensor for Motor Under Test via I2C
+  - INA226_1: Sensor for Motor Under Test current via I2C
   - INA226_2: Sensor for Load Motor / testing motor via I2C
+  - arduino-measurement A0: Motor Under Test voltage via ADC, requested by arduino-main over I2C
 
 ### Unassigned
 - D4, D5, D8, D9, D10, D11
