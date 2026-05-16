@@ -83,6 +83,9 @@ float motorUnderTestVoltageVolt = 0.0;
 float loadMotorCurrentAmpere = 0.0;
 float loadMotorVoltageVolt = 0.0;
 
+uint16_t calculatedPowerMilliWatt = 0;
+uint16_t calculatedEffectiveVoltageMilliVolt = 0;
+
 // =======================
 // Function Declarations
 // =======================
@@ -344,9 +347,32 @@ void calculateTorque() {
 }
 
 void calculatePower() {
+    float powerMilliWatt = motorUnderTestVoltageVolt * motorUnderTestCurrentAmpere * 1000.0;
+
+    if (powerMilliWatt < 0.0) {
+        powerMilliWatt = -powerMilliWatt;
+    }
+
+    if (powerMilliWatt > 65535.0) {
+        calculatedPowerMilliWatt = 65535;
+    } else {
+        calculatedPowerMilliWatt = static_cast<uint16_t>(powerMilliWatt + 0.5);
+    }
 }
 
 void calculateEffectiveVoltage() {
+    float effectiveVoltageMilliVolt = motorUnderTestVoltageVolt * 1000.0;
+    effectiveVoltageMilliVolt *= static_cast<float>(currentDutyCycle) / 255.0;
+
+    if (effectiveVoltageMilliVolt < 0.0) {
+        effectiveVoltageMilliVolt = -effectiveVoltageMilliVolt;
+    }
+
+    if (effectiveVoltageMilliVolt > 65535.0) {
+        calculatedEffectiveVoltageMilliVolt = 65535;
+    } else {
+        calculatedEffectiveVoltageMilliVolt = static_cast<uint16_t>(effectiveVoltageMilliVolt + 0.5);
+    }
 }
 
 void storeCompletedMeasurementDataPoint() {
