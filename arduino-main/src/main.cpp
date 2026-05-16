@@ -71,6 +71,7 @@ const uint8_t LOAD_MOTOR_INA226_ADDRESS = 0x40;
 
 const uint8_t CMD_SET_PWM = 0x01;
 const uint8_t CMD_STOP_MOTOR = 0x02;
+const uint8_t CMD_GET_TEST_MOTOR_VOLTAGE = 0x03;
 const uint8_t CMD_TAKE_RPM_MEASUREMENT = 0x10;
 const uint8_t CMD_GET_RPM = 0x11;
 const uint8_t CMD_IS_MEASUREMENT_RUNNING = 0x12;
@@ -105,6 +106,7 @@ const uint8_t MANUAL_TARGET_TORQUE_MINIMUM_MARGIN_MNM = 2;
 const uint16_t MANUAL_TARGET_POWER_MINIMUM_MARGIN_MW = 100;
 const unsigned long MOTOR_STABILIZATION_TIME_MS = 1000;
 const unsigned long MOTOR_STABILIZATION_STOP_POLL_INTERVAL_MS = 10;
+const unsigned long TEST_MOTOR_VOLTAGE_SAMPLE_TIME_MS = 5;
 const unsigned long STOP_LED_ON_TIME_MS = 2000;
 const char USB_EXPORT_FILE_NAME[] = "RESULT.CSV";
 
@@ -191,6 +193,7 @@ void startOptoRpmMeasurement();
 bool isOptoMeasurementRunning();
 uint16_t readOptoRpm();
 void readElectricalMeasurements();
+uint16_t readTestMotorVoltageMilliVoltFromMeasurementBoard();
 void calculateTorque();
 void calculatePower();
 void calculateEffectiveVoltage();
@@ -630,10 +633,28 @@ uint16_t readOptoRpm() {
 
 void readElectricalMeasurements() {
     motorUnderTestCurrentAmpere = motorUnderTestIna226.getCurrent();
-    motorUnderTestVoltageVolt = motorUnderTestIna226.getBusVoltage();
+    const uint16_t testMotorVoltageMilliVolt = readTestMotorVoltageMilliVoltFromMeasurementBoard();
+    motorUnderTestVoltageVolt = static_cast<float>(testMotorVoltageMilliVolt) / 1000.0f;
 
     loadMotorCurrentAmpere = loadMotorIna226.getCurrent();
     loadMotorVoltageVolt = loadMotorIna226.getBusVoltage();
+}
+
+uint16_t readTestMotorVoltageMilliVoltFromMeasurementBoard() {
+    Wire.beginTransmission(MEASUREMENT_I2C_ADDRESS);
+    Wire.write(CMD_GET_TEST_MOTOR_VOLTAGE);
+    Wire.endTransmission();
+
+    delay(TEST_MOTOR_VOLTAGE_SAMPLE_TIME_MS);
+
+    Wire.requestFrom(MEASUREMENT_I2C_ADDRESS, static_cast<uint8_t>(2));
+    if (Wire.available() >= 2) {
+        const uint8_t lowVoltageByte = Wire.read();
+        const uint8_t highVoltageByte = Wire.read();
+        return static_cast<uint16_t>(lowVoltageByte) | (static_cast<uint16_t>(highVoltageByte) << 8);
+    }
+
+    return 0;
 }
 
 void calculateTorque() {
@@ -674,7 +695,6 @@ void calculatePower() {
 
 void calculateEffectiveVoltage() {
     float effectiveVoltageMilliVolt = motorUnderTestVoltageVolt * 1000.0;
-    effectiveVoltageMilliVolt *= static_cast<float>(currentDutyCycle) / 255.0;
 
     if (effectiveVoltageMilliVolt < 0.0) {
         effectiveVoltageMilliVolt = -effectiveVoltageMilliVolt;
