@@ -38,8 +38,8 @@ On Arduino Nano / ATmega328P boards:
 |---|---:|---|
 | `arduino-measurement` | `0x08` | Receives PWM/motor control commands |
 | `arduino-opto` | `0x09` | Provides RPM data |
-| INA226 - Motor Under Test | `0x40` | Measures voltage/current for Motor Under Test |
-| INA226 - Load Motor | `0x41` | Measures voltage/current for Load Motor |
+| INA226 - Motor Under Test | `0x45` | Measures voltage/current for Motor Under Test |
+| INA226 - Load Motor | `0x40` | Measures voltage/current for Load Motor |
 
 ---
 
