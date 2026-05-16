@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <INA226.h>
 
 // =======================
 // Runtime States
@@ -46,6 +47,8 @@ const uint8_t STOP_LED_PIN = 7;
 
 const uint8_t MEASUREMENT_I2C_ADDRESS = 0x08;
 const uint8_t OPTO_I2C_ADDRESS = 0x09;
+const uint8_t MOTOR_UNDER_TEST_INA226_ADDRESS = 0x40;
+const uint8_t LOAD_MOTOR_INA226_ADDRESS = 0x41;
 
 const uint8_t CMD_SET_PWM = 0x01;
 const uint8_t CMD_STOP_MOTOR = 0x02;
@@ -54,6 +57,9 @@ const uint8_t CMD_GET_RPM = 0x11;
 const uint8_t CMD_IS_MEASUREMENT_RUNNING = 0x12;
 
 const uint8_t MAX_DATA_POINTS = 51;
+
+const float INA226_MAX_EXPECTED_CURRENT_AMPERE = 20.0;
+const float INA226_SHUNT_RESISTOR_OHM = 0.002;
 
 // =======================
 // Global Runtime Data
@@ -68,6 +74,14 @@ volatile bool startButtonInterruptFlag = false;
 volatile bool stopButtonInterruptFlag = false;
 bool optoMeasurementIsRunning = false;
 uint16_t latestOptoRpm = 0;
+
+INA226 motorUnderTestIna226(MOTOR_UNDER_TEST_INA226_ADDRESS);
+INA226 loadMotorIna226(LOAD_MOTOR_INA226_ADDRESS);
+
+float motorUnderTestCurrentAmpere = 0.0;
+float motorUnderTestVoltageVolt = 0.0;
+float loadMotorCurrentAmpere = 0.0;
+float loadMotorVoltageVolt = 0.0;
 
 // =======================
 // Function Declarations
@@ -198,6 +212,11 @@ void initializeSystem() {
 
     Wire.begin();
 
+    motorUnderTestIna226.begin();
+    loadMotorIna226.begin();
+    motorUnderTestIna226.setMaxCurrentShunt(INA226_MAX_EXPECTED_CURRENT_AMPERE, INA226_SHUNT_RESISTOR_OHM);
+    loadMotorIna226.setMaxCurrentShunt(INA226_MAX_EXPECTED_CURRENT_AMPERE, INA226_SHUNT_RESISTOR_OHM);
+
     attachInterrupt(digitalPinToInterrupt(START_BUTTON_PIN), handleStartButtonInterrupt, RISING);
     attachInterrupt(digitalPinToInterrupt(STOP_BUTTON_PIN), handleStopButtonInterrupt, RISING);
 }
@@ -314,6 +333,11 @@ uint16_t readOptoRpm() {
 }
 
 void readElectricalMeasurements() {
+    motorUnderTestCurrentAmpere = motorUnderTestIna226.getCurrent();
+    motorUnderTestVoltageVolt = motorUnderTestIna226.getBusVoltage();
+
+    loadMotorCurrentAmpere = loadMotorIna226.getCurrent();
+    loadMotorVoltageVolt = loadMotorIna226.getBusVoltage();
 }
 
 void calculateTorque() {
