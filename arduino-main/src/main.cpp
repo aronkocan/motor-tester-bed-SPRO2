@@ -1,6 +1,10 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <INA226.h>
+#include <SoftwareSerial.h>
+#include <Ch376msc.h>
+#include <stdio.h>
+#include <string.h>
 
 // =======================
 // Runtime States
@@ -57,6 +61,8 @@ const uint8_t START_BUTTON_PIN = 2;
 const uint8_t STOP_BUTTON_PIN = 3;
 const uint8_t START_LED_PIN = 6;
 const uint8_t STOP_LED_PIN = 7;
+const uint8_t USB_HOST_RX_PIN = 12;
+const uint8_t USB_HOST_TX_PIN = 13;
 
 const uint8_t MEASUREMENT_I2C_ADDRESS = 0x08;
 const uint8_t OPTO_I2C_ADDRESS = 0x09;
@@ -81,6 +87,7 @@ const uint8_t NEXTION_END_BYTE = 0xFF;
 const uint8_t NEXTION_MAX_PWM_VALUE = 255;
 const uint16_t NEXTION_READ_TIMEOUT_MS = 500;
 const unsigned long NEXTION_BAUD_RATE = 9600;
+const unsigned long USB_HOST_BAUD_RATE = 9600;
 const float NEXTION_SCALED_VALUE_DIVISOR = 100.0f;
 
 const uint8_t MAX_DATA_POINTS = 51;
@@ -94,6 +101,7 @@ const uint8_t MANUAL_TARGET_TORQUE_MINIMUM_MARGIN_MNM = 2;
 const uint16_t MANUAL_TARGET_POWER_MINIMUM_MARGIN_MW = 100;
 const unsigned long MOTOR_STABILIZATION_TIME_MS = 1000;
 const unsigned long MOTOR_STABILIZATION_STOP_POLL_INTERVAL_MS = 10;
+const char USB_EXPORT_FILE_NAME[] = "RESULT.CSV";
 
 const float INA226_MAX_EXPECTED_CURRENT_AMPERE = 20.0;
 const float INA226_SHUNT_RESISTOR_OHM = 0.002;
@@ -126,6 +134,10 @@ volatile bool startButtonInterruptFlag = false;
 volatile bool stopButtonInterruptFlag = false;
 bool optoMeasurementIsRunning = false;
 uint16_t latestOptoRpm = 0;
+bool usbFlashDriveIsInitialized = false;
+
+SoftwareSerial usbHostSerial(USB_HOST_RX_PIN, USB_HOST_TX_PIN);
+Ch376msc usbFlashDrive(usbHostSerial);
 
 INA226 motorUnderTestIna226(MOTOR_UNDER_TEST_INA226_ADDRESS);
 INA226 loadMotorIna226(LOAD_MOTOR_INA226_ADDRESS);
@@ -186,6 +198,9 @@ void updateBestManualTargetDataPoint();
 void finishManualTargetMeasurement();
 
 void outputResultsToNextion();
+void initializeUsbFlashDrive();
+bool writeTextToUsbFile(const char *text);
+bool writeDataPointCsvLineToUsbFile(const MeasurementDataPoint &dataPoint);
 void exportResultsUSB();
 
 // =======================
@@ -301,6 +316,7 @@ void initializeSystem() {
 
     Wire.begin();
     Serial.begin(NEXTION_BAUD_RATE);
+    initializeUsbFlashDrive();
 
     motorUnderTestIna226.begin();
     loadMotorIna226.begin();
@@ -821,6 +837,54 @@ void finishManualTargetMeasurement() {
 void outputResultsToNextion() {
 }
 
+void initializeUsbFlashDrive() {
+    if (usbFlashDriveIsInitialized) {
+        return;
+    }
+
+    usbHostSerial.begin(USB_HOST_BAUD_RATE);
+    usbFlashDrive.init();
+    usbFlashDrive.setSource(0);
+    usbFlashDriveIsInitialized = true;
+}
+
+bool writeTextToUsbFile(const char *text) {
+    return usbFlashDrive.writeFile(const_cast<char *>(text), strlen(text));
+}
+
+bool writeDataPointCsvLineToUsbFile(const MeasurementDataPoint &dataPoint) {
+    char lineBuffer[42];
+    snprintf(lineBuffer,
+             sizeof(lineBuffer),
+             "%u,%u,%u,%u,%u\r\n",
+             dataPoint.dutyCycleStep,
+             dataPoint.effectiveVoltageMilliVolt,
+             dataPoint.torqueMilliNewtonMeter,
+             dataPoint.powerMilliWatt,
+             dataPoint.rpm);
+
+    return writeTextToUsbFile(lineBuffer);
+}
+
 void exportResultsUSB() {
+    initializeUsbFlashDrive();
+    usbFlashDrive.checkIntMessage();
+
+    if (!usbFlashDrive.driveReady()) {
+        return;
+    }
+
+    usbFlashDrive.setFileName(USB_EXPORT_FILE_NAME);
+    usbFlashDrive.deleteFile();
+    usbFlashDrive.setFileName(USB_EXPORT_FILE_NAME);
+    usbFlashDrive.openFile();
+
+    bool exportSucceeded = writeTextToUsbFile("duty,effective_mV,torque_mNm,power_mW,rpm\r\n");
+
+    for (uint8_t i = 0; i < dataPointCount && exportSucceeded; i++) {
+        exportSucceeded = writeDataPointCsvLineToUsbFile(dataPoints[i]);
+    }
+
+    usbFlashDrive.closeFile();
 }
 
