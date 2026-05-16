@@ -99,6 +99,8 @@ uint8_t automaticStepSize = 1;
 float manualTargetValue = 0.0f;
 MeasurementDataPoint dataPoints[MAX_DATA_POINTS];
 uint8_t dataPointCount = 0;
+uint8_t requiredDataPointCount = 0;
+bool requiredDataPointsStored = false;
 uint8_t currentDutyCycle = 0;
 volatile bool startButtonInterruptFlag = false;
 volatile bool stopButtonInterruptFlag = false;
@@ -322,6 +324,7 @@ void handleButtonInterruptFlags() {
 
 void resetPreviousMeasurement() {
     dataPointCount = 0;
+    requiredDataPointsStored = false;
 }
 
 void getSetupInformationFromNextion() {
@@ -431,6 +434,26 @@ uint8_t limitNextionValueToByte(uint32_t value) {
 }
 
 void prepareMeasurementStep() {
+    if (currentMeasurementMode == MeasurementMode::MANUAL_TARGET) {
+        currentDutyCycle = 1;
+        requiredDataPointCount = 1;
+        return;
+    }
+
+    currentDutyCycle = automaticIntervalMinimum;
+
+    const uint16_t dutyCycleRange = automaticIntervalMaximum - automaticIntervalMinimum;
+    uint16_t calculatedDataPointCount = (dutyCycleRange / automaticStepSize) + 1;
+
+    if ((dutyCycleRange % automaticStepSize) != 0) {
+        calculatedDataPointCount++;
+    }
+
+    if (calculatedDataPointCount > MAX_DATA_POINTS) {
+        calculatedDataPointCount = MAX_DATA_POINTS;
+    }
+
+    requiredDataPointCount = static_cast<uint8_t>(calculatedDataPointCount);
 }
 
 // =====================================
@@ -561,10 +584,6 @@ void calculateEffectiveVoltage() {
 }
 
 void storeCompletedMeasurementDataPoint() {
-    if (dataPointCount >= MAX_DATA_POINTS) {
-        return;
-    }
-
     MeasurementDataPoint completedDataPoint;
     completedDataPoint.dutyCycleStep = currentDutyCycle;
     completedDataPoint.effectiveVoltageMilliVolt = calculatedEffectiveVoltageMilliVolt;
@@ -572,8 +591,23 @@ void storeCompletedMeasurementDataPoint() {
     completedDataPoint.powerMilliWatt = calculatedPowerMilliWatt;
     completedDataPoint.rpm = latestOptoRpm;
 
+    if (currentMeasurementMode == MeasurementMode::MANUAL_TARGET) {
+        dataPoints[0] = completedDataPoint;
+        dataPointCount = 1;
+        return;
+    }
+
+    if (dataPointCount >= requiredDataPointCount || dataPointCount >= MAX_DATA_POINTS) {
+        requiredDataPointsStored = true;
+        return;
+    }
+
     dataPoints[dataPointCount] = completedDataPoint;
     dataPointCount++;
+
+    if (dataPointCount >= requiredDataPointCount || dataPointCount >= MAX_DATA_POINTS) {
+        requiredDataPointsStored = true;
+    }
 }
 
 // ==================================
