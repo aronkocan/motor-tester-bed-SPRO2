@@ -398,6 +398,19 @@ void calculateEffectiveVoltage() {
 }
 
 void storeCompletedMeasurementDataPoint() {
+    if (dataPointCount >= MAX_DATA_POINTS) {
+        return;
+    }
+
+    MeasurementDataPoint completedDataPoint;
+    completedDataPoint.dutyCycleStep = currentDutyCycle;
+    completedDataPoint.effectiveVoltageMilliVolt = calculatedEffectiveVoltageMilliVolt;
+    completedDataPoint.torqueMilliNewtonMeter = calculatedTorqueMilliNewtonMeter;
+    completedDataPoint.powerMilliWatt = calculatedPowerMilliWatt;
+    completedDataPoint.rpm = latestOptoRpm;
+
+    dataPoints[dataPointCount] = completedDataPoint;
+    dataPointCount++;
 }
 
 // ==================================
