@@ -83,6 +83,10 @@ const uint8_t NEXTION_TARGET_RPM = 2;
 const uint8_t NEXTION_TARGET_EFFECTIVE_VOLTAGE = 3;
 const uint8_t NEXTION_TARGET_DUTY_CYCLE = 4;
 const uint8_t NEXTION_NUMBER_RESPONSE = 0x71;
+const uint8_t NEXTION_TOUCH_EVENT_RESPONSE = 0x65;
+const uint8_t NEXTION_TOUCH_EVENT_PRESS = 0x01;
+const uint8_t NEXTION_RESULTS_EXPORT_BUTTON_COMPONENT_ID = 1;
+const uint8_t NEXTION_RESULTS_BACK_BUTTON_COMPONENT_ID = 2;
 const uint8_t NEXTION_END_BYTE = 0xFF;
 const uint8_t NEXTION_MAX_PWM_VALUE = 255;
 const uint16_t NEXTION_READ_TIMEOUT_MS = 500;
@@ -197,7 +201,8 @@ float getAbsoluteDifference(float firstValue, float secondValue);
 void updateBestManualTargetDataPoint();
 void finishManualTargetMeasurement();
 
-void outputResultsToNextion();
+bool readNextionTouchEvent(uint8_t &componentId);
+bool readNextionByteWithTimeout(uint8_t &value);
 void initializeUsbFlashDrive();
 bool writeTextToUsbFile(const char *text);
 bool writeDataPointCsvLineToUsbFile(const MeasurementDataPoint &dataPoint);
@@ -302,6 +307,17 @@ void handleEvaluateNextStepState() {
 }
 
 void handleOutputResultsState() {
+    uint8_t pressedComponentId = 0;
+
+    if (!readNextionTouchEvent(pressedComponentId)) {
+        return;
+    }
+
+    if (pressedComponentId == NEXTION_RESULTS_EXPORT_BUTTON_COMPONENT_ID) {
+        exportResultsUSB();
+    } else if (pressedComponentId == NEXTION_RESULTS_BACK_BUTTON_COMPONENT_ID) {
+        enterState(MainState::WAIT_FOR_SETUP);
+    }
 }
 
 // =======================
@@ -370,6 +386,7 @@ void handleButtonInterruptFlags() {
 // ============================
 
 void resetPreviousMeasurement() {
+    memset(dataPoints, 0, sizeof(dataPoints));
     dataPointCount = 0;
     requiredDataPointsStored = false;
 }
@@ -834,7 +851,48 @@ void finishManualTargetMeasurement() {
 // Output Results State functions
 // ==============================
 
-void outputResultsToNextion() {
+bool readNextionTouchEvent(uint8_t &componentId) {
+    while (Serial.available() > 0) {
+        if (Serial.read() != NEXTION_TOUCH_EVENT_RESPONSE) {
+            continue;
+        }
+
+        uint8_t pageId = 0;
+        uint8_t eventType = 0;
+        uint8_t endByte = 0;
+
+        if (!readNextionByteWithTimeout(pageId) ||
+            !readNextionByteWithTimeout(componentId) ||
+            !readNextionByteWithTimeout(eventType)) {
+            return false;
+        }
+        (void)pageId;
+
+        for (uint8_t i = 0; i < 3; i++) {
+            if (!readNextionByteWithTimeout(endByte) || endByte != NEXTION_END_BYTE) {
+                return false;
+            }
+        }
+
+        return eventType == NEXTION_TOUCH_EVENT_PRESS;
+    }
+
+    return false;
+}
+
+bool readNextionByteWithTimeout(uint8_t &value) {
+    const unsigned long startTimeMs = millis();
+
+    while ((millis() - startTimeMs) < NEXTION_READ_TIMEOUT_MS) {
+        if (Serial.available() <= 0) {
+            continue;
+        }
+
+        value = Serial.read();
+        return true;
+    }
+
+    return false;
 }
 
 void initializeUsbFlashDrive() {
