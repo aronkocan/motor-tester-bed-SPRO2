@@ -60,6 +60,8 @@ const uint8_t MAX_DATA_POINTS = 51;
 
 const float INA226_MAX_EXPECTED_CURRENT_AMPERE = 20.0;
 const float INA226_SHUNT_RESISTOR_OHM = 0.002;
+const float MOTOR_EFFICIENCY = 0.75f * 0.9f;
+const float PI_VALUE = 3.14159265f;
 
 // =======================
 // Global Runtime Data
@@ -85,6 +87,7 @@ float loadMotorVoltageVolt = 0.0;
 
 uint16_t calculatedPowerMilliWatt = 0;
 uint16_t calculatedEffectiveVoltageMilliVolt = 0;
+uint16_t calculatedTorqueMilliNewtonMeter = 0;
 
 // =======================
 // Function Declarations
@@ -344,6 +347,25 @@ void readElectricalMeasurements() {
 }
 
 void calculateTorque() {
+    if (latestOptoRpm == 0) {
+        calculatedTorqueMilliNewtonMeter = 0;
+        return;
+    }
+
+    float electricalPowerWatt = motorUnderTestVoltageVolt * motorUnderTestCurrentAmpere;
+    if (electricalPowerWatt < 0.0) {
+        electricalPowerWatt = -electricalPowerWatt;
+    }
+
+    const float mechanicalPowerWatt = MOTOR_EFFICIENCY * electricalPowerWatt;
+    const float angularVelocityRadiansPerSecond = (2.0f * PI_VALUE * static_cast<float>(latestOptoRpm)) / 60.0f;
+    const float torqueMilliNewtonMeter = (mechanicalPowerWatt / angularVelocityRadiansPerSecond) * 1000.0f;
+
+    if (torqueMilliNewtonMeter > 65535.0f) {
+        calculatedTorqueMilliNewtonMeter = 65535;
+    } else {
+        calculatedTorqueMilliNewtonMeter = static_cast<uint16_t>(torqueMilliNewtonMeter + 0.5f);
+    }
 }
 
 void calculatePower() {
