@@ -253,6 +253,11 @@ void handleRunMeasurementCycleState() {
 }
 
 void handleEvaluateNextStepState() {
+    if (currentMeasurementMode == MeasurementMode::AUTOMATIC) {
+        evaluateAutomaticMeasurementProgress();
+    } else {
+        evaluateManualTargetMeasurementProgress();
+    }
 }
 
 void handleOutputResultsState() {
@@ -615,6 +620,19 @@ void storeCompletedMeasurementDataPoint() {
 // ==================================
 
 void evaluateAutomaticMeasurementProgress() {
+    if (dataPointCount < requiredDataPointCount && dataPointCount < MAX_DATA_POINTS) {
+        uint16_t nextDutyCycle = static_cast<uint16_t>(currentDutyCycle) + automaticStepSize;
+
+        if (nextDutyCycle > automaticIntervalMaximum) {
+            nextDutyCycle = automaticIntervalMaximum;
+        }
+
+        currentDutyCycle = static_cast<uint8_t>(nextDutyCycle);
+        enterState(MainState::RUN_MEASUREMENT_CYCLE);
+        return;
+    }
+
+    enterState(MainState::OUTPUT_RESULTS);
 }
 
 void evaluateManualTargetMeasurementProgress() {
