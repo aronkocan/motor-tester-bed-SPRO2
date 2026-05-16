@@ -144,3 +144,58 @@ Response layout:
 |---:|---|---|---|
 | 0 | RPM low byte | `uint8_t` | low byte of the latest completed whole-number RPM value |
 | 1 | RPM high byte | `uint8_t` | high byte of the latest completed whole-number RPM value |
+
+---
+
+## Nextion Setup Values
+
+The Arduino reads setup values from the Nextion display.
+
+### Known setup value components
+
+| Meaning | Page | Object name | ID | Type | Value meaning |
+|---|---|---|---:|---:|---|
+| Measurement mode select | `setup` | `mode` | 47 | 52 | `0 = automatic`, `1 = manual` |
+| Automatic interval min | `range` | `n0` | 14 | 54 | minimum selected interval value |
+| Automatic interval max | `range` | `n1` | 16 | 54 | maximum selected interval value |
+| Automatic step size | `range` | `n2` | 28 | 54 | selected step size |
+| Manual target select | `target` | `tarsel` | 1 | 52 | `0 = Power`, `1 = Torque`, `2 = RPM`, `3 = Effective Voltage`, `4 = Duty cycle` |
+| Power target | `target` | `power` | 24 | 52 | target power value |
+| Torque target | `ttorque` | `x0` | 1 | 59 | target torque value, sent as scaled integer |
+| RPM target | `trpm` | `n0` | 1 | 54 | target RPM value |
+| Effective voltage target | TBD | TBD | TBD | TBD | placeholder until component is defined |
+| Duty cycle target | TBD | TBD | TBD | TBD | placeholder until component is defined |
+
+### Nextion value type notes
+
+The current known Nextion value types are:
+
+| Type | Meaning / Handling |
+|---:|---|
+| 52 | numeric selection/value |
+| 54 | numeric integer value |
+| 59 | float-style value sent as a scaled integer |
+
+Type `59` should be treated as a float-style value that is received by the Arduino as an integer and converted back using a scale factor of 100.
+
+Example:
+
+```text
+Displayed/intended value: 13.45
+Received value: 1345
+Arduino conversion: 1345 / 100.0 = 13.45
+```
+
+## Nextion Touch Events
+
+Most setup values are requested by `arduino-main` from the nextion using commands. However, some Nextion buttons may send touch events automatically when pressed.
+
+The export button should be configured in the Nextion Editor to send its component ID when pressed.
+
+### Export button touch event
+
+| Meaning | Page | Object name | Component ID | Event | Purpose |
+|---|---|---|---:|---|---|
+| Export button | TBD | `PLACEHOLDER_EXPORT_BUTTON_COMPONENT` | TBD | Press | Export data |
+
+When the export button is pressed, the Nextion sends a touch event message to `arduino-main`.
