@@ -66,8 +66,8 @@ const uint8_t USB_HOST_TX_PIN = 13;
 
 const uint8_t MEASUREMENT_I2C_ADDRESS = 0x08;
 const uint8_t OPTO_I2C_ADDRESS = 0x09;
-const uint8_t MOTOR_UNDER_TEST_INA226_ADDRESS = 0x45;
-const uint8_t LOAD_MOTOR_INA226_ADDRESS = 0x40;
+const uint8_t MOTOR_UNDER_TEST_INA226_ADDRESS = 0x40;
+const uint8_t LOAD_MOTOR_INA226_ADDRESS = 0x45;
 
 const uint8_t CMD_SET_PWM = 0x01;
 const uint8_t CMD_STOP_MOTOR = 0x02;
@@ -110,7 +110,7 @@ const unsigned long TEST_MOTOR_VOLTAGE_SAMPLE_TIME_MS = 5;
 const unsigned long STOP_LED_ON_TIME_MS = 2000;
 const char USB_EXPORT_FILE_NAME[] = "RESULT.CSV";
 
-const float INA226_MAX_EXPECTED_CURRENT_AMPERE = 20.0;
+const float INA226_MAX_EXPECTED_CURRENT_AMPERE = 2.0;
 const float INA226_SHUNT_RESISTOR_OHM = 0.1;
 const float MOTOR_EFFICIENCY = 0.75f * 0.9f;
 const float PI_VALUE = 3.14159265f;
