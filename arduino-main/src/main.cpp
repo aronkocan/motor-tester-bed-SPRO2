@@ -195,6 +195,33 @@ void handlePrepareTestState() {
 }
 
 void handleRunMeasurementCycleState() {
+    sendDutyCycleToMeasurementBoard();
+    waitForMotorToStabilize();
+
+    handleButtonInterruptFlags();
+    if (currentState != MainState::RUN_MEASUREMENT_CYCLE) {
+        return;
+    }
+
+    readElectricalMeasurements();
+    startOptoRpmMeasurement();
+
+    while (isOptoMeasurementRunning()) {
+        handleButtonInterruptFlags();
+        if (currentState != MainState::RUN_MEASUREMENT_CYCLE) {
+            return;
+        }
+
+        delay(10);
+    }
+
+    readOptoRpm();
+    calculateEffectiveVoltage();
+    calculatePower();
+    calculateTorque();
+    storeCompletedMeasurementDataPoint();
+
+    enterState(MainState::EVALUATE_NEXT_STEP);
 }
 
 void handleEvaluateNextStepState() {
