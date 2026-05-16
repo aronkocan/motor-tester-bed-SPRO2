@@ -188,12 +188,6 @@ Both modes should reuse the same basic measurement cycle:
 
 Automatic measurement sweeps through a selected duty cycle range and records datapoints across that range.
 
-User setup:
-- select measurement range, for example 20% to 50%
-- convert selected percentages to PWM/duty cycle values, for example:
-  - 20% ≈ 51
-  - 50% ≈ 128
-
 Runtime behavior:
 - calculate an appropriate duty cycle step size for the selected range
 - limit the total number of stored datapoints to a maximum of 51 because Arduino memory is limited
