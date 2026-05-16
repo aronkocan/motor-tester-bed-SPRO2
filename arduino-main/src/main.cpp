@@ -31,6 +31,12 @@ enum class ManualTargetType {
     DUTY_CYCLE
 };
 
+enum class ManualSearchPhase {
+    CHECK_MINIMUM_DUTY,
+    CHECK_MAXIMUM_DUTY,
+    SEARCH_TARGET_RANGE
+};
+
 // =======================
 // Measurement Data
 // =======================
@@ -78,6 +84,14 @@ const unsigned long NEXTION_BAUD_RATE = 9600;
 const float NEXTION_SCALED_VALUE_DIVISOR = 100.0f;
 
 const uint8_t MAX_DATA_POINTS = 51;
+const uint8_t MANUAL_MINIMUM_DUTY_CYCLE = 1;
+const uint8_t MANUAL_MAXIMUM_DUTY_CYCLE = 255;
+const uint8_t MANUAL_TARGET_MARGIN_PERCENT = 5;
+const uint8_t MANUAL_TARGET_DUTY_MARGIN = 1;
+const uint8_t MANUAL_TARGET_RPM_MINIMUM_MARGIN = 10;
+const uint8_t MANUAL_TARGET_VOLTAGE_MINIMUM_MARGIN_MV = 100;
+const uint8_t MANUAL_TARGET_TORQUE_MINIMUM_MARGIN_MNM = 2;
+const uint16_t MANUAL_TARGET_POWER_MINIMUM_MARGIN_MW = 100;
 const unsigned long MOTOR_STABILIZATION_TIME_MS = 1000;
 const unsigned long MOTOR_STABILIZATION_STOP_POLL_INTERVAL_MS = 10;
 
@@ -102,6 +116,12 @@ uint8_t dataPointCount = 0;
 uint8_t requiredDataPointCount = 0;
 bool requiredDataPointsStored = false;
 uint8_t currentDutyCycle = 0;
+ManualSearchPhase manualSearchPhase = ManualSearchPhase::CHECK_MINIMUM_DUTY;
+uint8_t manualSearchLowestDutyCycle = MANUAL_MINIMUM_DUTY_CYCLE;
+uint8_t manualSearchHighestDutyCycle = MANUAL_MAXIMUM_DUTY_CYCLE;
+MeasurementDataPoint bestManualTargetDataPoint = {0, 0, 0, 0, 0};
+float bestManualTargetDifference = 0.0f;
+bool bestManualTargetDataPointIsSet = false;
 volatile bool startButtonInterruptFlag = false;
 volatile bool stopButtonInterruptFlag = false;
 bool optoMeasurementIsRunning = false;
@@ -157,7 +177,13 @@ void storeCompletedMeasurementDataPoint();
 
 void evaluateAutomaticMeasurementProgress();
 void evaluateManualTargetMeasurementProgress();
-void selectNextMeasurementStep();
+float getManualTargetValueInDataUnits();
+float getManualDataPointValue(const MeasurementDataPoint &dataPoint);
+float getManualTargetMargin(float targetValue);
+bool isManualTargetWithinMargin(float measuredValue, float targetValue);
+float getAbsoluteDifference(float firstValue, float secondValue);
+void updateBestManualTargetDataPoint();
+void finishManualTargetMeasurement();
 
 void outputResultsToNextion();
 void exportResultsUSB();
@@ -440,8 +466,14 @@ uint8_t limitNextionValueToByte(uint32_t value) {
 
 void prepareMeasurementStep() {
     if (currentMeasurementMode == MeasurementMode::MANUAL_TARGET) {
-        currentDutyCycle = 1;
+        currentDutyCycle = MANUAL_MINIMUM_DUTY_CYCLE;
         requiredDataPointCount = 1;
+        manualSearchPhase = ManualSearchPhase::CHECK_MINIMUM_DUTY;
+        manualSearchLowestDutyCycle = MANUAL_MINIMUM_DUTY_CYCLE;
+        manualSearchHighestDutyCycle = MANUAL_MAXIMUM_DUTY_CYCLE;
+        bestManualTargetDataPoint = {0, 0, 0, 0, 0};
+        bestManualTargetDifference = 0.0f;
+        bestManualTargetDataPointIsSet = false;
         return;
     }
 
@@ -637,9 +669,149 @@ void evaluateAutomaticMeasurementProgress() {
 }
 
 void evaluateManualTargetMeasurementProgress() {
+    updateBestManualTargetDataPoint();
+
+    const float targetValue = getManualTargetValueInDataUnits();
+    const float measuredValue = getManualDataPointValue(dataPoints[0]);
+
+    if (isManualTargetWithinMargin(measuredValue, targetValue)) {
+        finishManualTargetMeasurement();
+        return;
+    }
+
+    if (manualSearchPhase == ManualSearchPhase::CHECK_MINIMUM_DUTY) {
+        if (targetValue < measuredValue) {
+            finishManualTargetMeasurement();
+            return;
+        }
+
+        manualSearchPhase = ManualSearchPhase::CHECK_MAXIMUM_DUTY;
+        manualSearchLowestDutyCycle = MANUAL_MINIMUM_DUTY_CYCLE;
+        currentDutyCycle = MANUAL_MAXIMUM_DUTY_CYCLE;
+        enterState(MainState::RUN_MEASUREMENT_CYCLE);
+        return;
+    }
+
+    if (manualSearchPhase == ManualSearchPhase::CHECK_MAXIMUM_DUTY) {
+        if (targetValue > measuredValue) {
+            finishManualTargetMeasurement();
+            return;
+        }
+
+        manualSearchPhase = ManualSearchPhase::SEARCH_TARGET_RANGE;
+        manualSearchHighestDutyCycle = MANUAL_MAXIMUM_DUTY_CYCLE;
+    } else if (measuredValue < targetValue) {
+        manualSearchLowestDutyCycle = currentDutyCycle;
+    } else {
+        manualSearchHighestDutyCycle = currentDutyCycle;
+    }
+
+    if ((manualSearchHighestDutyCycle - manualSearchLowestDutyCycle) <= 1) {
+        finishManualTargetMeasurement();
+        return;
+    }
+
+    currentDutyCycle = manualSearchLowestDutyCycle + ((manualSearchHighestDutyCycle - manualSearchLowestDutyCycle) / 2);
+    enterState(MainState::RUN_MEASUREMENT_CYCLE);
 }
 
-void selectNextMeasurementStep() {
+float getManualTargetValueInDataUnits() {
+    if (selectedManualTargetType == ManualTargetType::EFFECTIVE_VOLTAGE) {
+        return manualTargetValue * 1000.0f;
+    }
+
+    return manualTargetValue;
+}
+
+float getManualDataPointValue(const MeasurementDataPoint &dataPoint) {
+    if (selectedManualTargetType == ManualTargetType::POWER) {
+        return static_cast<float>(dataPoint.powerMilliWatt);
+    }
+
+    if (selectedManualTargetType == ManualTargetType::TORQUE) {
+        return static_cast<float>(dataPoint.torqueMilliNewtonMeter);
+    }
+
+    if (selectedManualTargetType == ManualTargetType::EFFECTIVE_VOLTAGE) {
+        return static_cast<float>(dataPoint.effectiveVoltageMilliVolt);
+    }
+
+    if (selectedManualTargetType == ManualTargetType::DUTY_CYCLE) {
+        return static_cast<float>(dataPoint.dutyCycleStep);
+    }
+
+    return static_cast<float>(dataPoint.rpm);
+}
+
+float getManualTargetMargin(float targetValue) {
+    float percentMargin = targetValue * static_cast<float>(MANUAL_TARGET_MARGIN_PERCENT) / 100.0f;
+
+    if (selectedManualTargetType == ManualTargetType::DUTY_CYCLE) {
+        if (percentMargin < static_cast<float>(MANUAL_TARGET_DUTY_MARGIN)) {
+            return static_cast<float>(MANUAL_TARGET_DUTY_MARGIN);
+        }
+        return percentMargin;
+    }
+
+    if (selectedManualTargetType == ManualTargetType::RPM) {
+        if (percentMargin < static_cast<float>(MANUAL_TARGET_RPM_MINIMUM_MARGIN)) {
+            return static_cast<float>(MANUAL_TARGET_RPM_MINIMUM_MARGIN);
+        }
+        return percentMargin;
+    }
+
+    if (selectedManualTargetType == ManualTargetType::EFFECTIVE_VOLTAGE) {
+        if (percentMargin < static_cast<float>(MANUAL_TARGET_VOLTAGE_MINIMUM_MARGIN_MV)) {
+            return static_cast<float>(MANUAL_TARGET_VOLTAGE_MINIMUM_MARGIN_MV);
+        }
+        return percentMargin;
+    }
+
+    if (selectedManualTargetType == ManualTargetType::TORQUE) {
+        if (percentMargin < static_cast<float>(MANUAL_TARGET_TORQUE_MINIMUM_MARGIN_MNM)) {
+            return static_cast<float>(MANUAL_TARGET_TORQUE_MINIMUM_MARGIN_MNM);
+        }
+        return percentMargin;
+    }
+
+    if (percentMargin < static_cast<float>(MANUAL_TARGET_POWER_MINIMUM_MARGIN_MW)) {
+        return static_cast<float>(MANUAL_TARGET_POWER_MINIMUM_MARGIN_MW);
+    }
+    return percentMargin;
+}
+
+bool isManualTargetWithinMargin(float measuredValue, float targetValue) {
+    return getAbsoluteDifference(measuredValue, targetValue) <= getManualTargetMargin(targetValue);
+}
+
+float getAbsoluteDifference(float firstValue, float secondValue) {
+    if (firstValue > secondValue) {
+        return firstValue - secondValue;
+    }
+
+    return secondValue - firstValue;
+}
+
+void updateBestManualTargetDataPoint() {
+    const float targetValue = getManualTargetValueInDataUnits();
+    const float measuredValue = getManualDataPointValue(dataPoints[0]);
+    const float currentDifference = getAbsoluteDifference(measuredValue, targetValue);
+
+    if (!bestManualTargetDataPointIsSet || currentDifference < bestManualTargetDifference) {
+        bestManualTargetDataPoint = dataPoints[0];
+        bestManualTargetDifference = currentDifference;
+        bestManualTargetDataPointIsSet = true;
+    }
+}
+
+void finishManualTargetMeasurement() {
+    if (bestManualTargetDataPointIsSet) {
+        dataPoints[0] = bestManualTargetDataPoint;
+        dataPointCount = 1;
+    }
+
+    stopMeasurementMotor();
+    enterState(MainState::OUTPUT_RESULTS);
 }
 
 // ==============================
