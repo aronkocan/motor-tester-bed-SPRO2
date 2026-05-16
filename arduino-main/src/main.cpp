@@ -57,6 +57,8 @@ const uint8_t CMD_GET_RPM = 0x11;
 const uint8_t CMD_IS_MEASUREMENT_RUNNING = 0x12;
 
 const uint8_t MAX_DATA_POINTS = 51;
+const unsigned long MOTOR_STABILIZATION_TIME_MS = 1000;
+const unsigned long MOTOR_STABILIZATION_STOP_POLL_INTERVAL_MS = 10;
 
 const float INA226_MAX_EXPECTED_CURRENT_AMPERE = 20.0;
 const float INA226_SHUNT_RESISTOR_OHM = 0.002;
@@ -195,6 +197,33 @@ void handlePrepareTestState() {
 }
 
 void handleRunMeasurementCycleState() {
+    sendDutyCycleToMeasurementBoard();
+    waitForMotorToStabilize();
+
+    handleButtonInterruptFlags();
+    if (currentState != MainState::RUN_MEASUREMENT_CYCLE) {
+        return;
+    }
+
+    readElectricalMeasurements();
+    startOptoRpmMeasurement();
+
+    while (isOptoMeasurementRunning()) {
+        handleButtonInterruptFlags();
+        if (currentState != MainState::RUN_MEASUREMENT_CYCLE) {
+            return;
+        }
+
+        delay(10);
+    }
+
+    readOptoRpm();
+    calculateEffectiveVoltage();
+    calculatePower();
+    calculateTorque();
+    storeCompletedMeasurementDataPoint();
+
+    enterState(MainState::EVALUATE_NEXT_STEP);
 }
 
 void handleEvaluateNextStepState() {
@@ -299,7 +328,16 @@ void stopMeasurementMotor() {
 }
 
 void waitForMotorToStabilize() {
-    delay(1000);
+    const unsigned long stabilizationStartMs = millis();
+
+    while ((millis() - stabilizationStartMs) < MOTOR_STABILIZATION_TIME_MS) {
+        handleButtonInterruptFlags();
+        if (currentState != MainState::RUN_MEASUREMENT_CYCLE) {
+            return;
+        }
+
+        delay(MOTOR_STABILIZATION_STOP_POLL_INTERVAL_MS);
+    }
 }
 
 void startOptoRpmMeasurement() {
