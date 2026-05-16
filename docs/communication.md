@@ -190,12 +190,14 @@ Arduino conversion: 1345 / 100.0 = 13.45
 
 Most setup values are requested by `arduino-main` from the nextion using commands. However, some Nextion buttons may send touch events automatically when pressed.
 
-The export button should be configured in the Nextion Editor to send its component ID when pressed.
+When a configured Nextion button is pressed, the Nextion sends a touch event message to `arduino-main`. This only happens in the Output Results State.
 
-### Export button touch event
+### Output Results State button touch event
 
-| Meaning | Page | Object name | Component ID | Event | Purpose |
-|---|---|---|---:|---|---|
-| Export button | TBD | `PLACEHOLDER_EXPORT_BUTTON_COMPONENT` | TBD | Press | Export data |
+| Meaning       | Page | Object name                           | Component ID | Event | Purpose                                          |
+| ------------- | ---- | ------------------------------------- | -----------: | ----- | ------------------------------------------------ |
+| Export button | TBD  | `PLACEHOLDER_EXPORT_BUTTON_COMPONENT` |          TBD | Press | Start/export collected measurement data          |
+| Back button   | TBD  | `PLACEHOLDER_BACK_BUTTON_COMPONENT`   |          TBD | Press | Return from result/output screen to setup screen |
+
 
 When the export button is pressed, the Nextion sends a touch event message to `arduino-main`.
