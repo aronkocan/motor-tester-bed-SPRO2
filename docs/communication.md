@@ -161,10 +161,10 @@ The Arduino reads setup values from the Nextion display.
 | Automatic step size | `range` | `n2` | 28 | 54 | selected step size |
 | Manual target select | `target` | `tarsel` | 1 | 52 | `0 = Power`, `1 = Torque`, `2 = RPM`, `3 = Effective Voltage`, `4 = Duty cycle` |
 | Power target | `target` | `power` | 24 | 52 | target power value |
-| Torque target | `ttorque` | `x0` | 1 | 59 | target torque value, sent as scaled integer |
+| Torque target | `ttorque` | `x0` | 1 | 59 | target torque value, format `00.0`, sent as scaled integer |
 | RPM target | `trpm` | `n0` | 1 | 54 | target RPM value |
-| Effective voltage target | TBD | TBD | TBD | TBD | placeholder until component is defined |
-| Duty cycle target | TBD | TBD | TBD | TBD | placeholder until component is defined |
+| Effective voltage target | `teff` | `x0` | 1 | 59 | target effective voltage value, format `00.0`, sent as scaled integer |
+| Duty cycle target | `tduty` | `n0` | 1 | 54 | target duty cycle value |
 
 ### Nextion value type notes
 
