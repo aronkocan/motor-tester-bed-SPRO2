@@ -11,8 +11,7 @@ enum class MainState {
     PREPARE_TEST,
     RUN_MEASUREMENT_CYCLE,
     EVALUATE_NEXT_STEP,
-    OUTPUT_RESULTS,
-    ERROR
+    OUTPUT_RESULTS
 };
 
 // =======================
@@ -107,7 +106,6 @@ void handlePrepareTestState();
 void handleRunMeasurementCycleState();
 void handleEvaluateNextStepState();
 void handleOutputResultsState();
-void handleErrorState();
 
 void resetPreviousMeasurement();
 void getSetupInformationFromNextion();
@@ -170,10 +168,6 @@ void runStateMachine() {
         case MainState::OUTPUT_RESULTS:
             handleOutputResultsState();
             break;
-
-        case MainState::ERROR:
-            handleErrorState();
-            break;
     }
 }
 
@@ -230,9 +224,6 @@ void handleEvaluateNextStepState() {
 }
 
 void handleOutputResultsState() {
-}
-
-void handleErrorState() {
 }
 
 // =======================
@@ -299,6 +290,7 @@ void handleButtonInterruptFlags() {
 // ============================
 
 void resetPreviousMeasurement() {
+    dataPointCount = 0;
 }
 
 void getSetupInformationFromNextion() {
@@ -474,6 +466,3 @@ void outputResultsToNextion() {
 void exportResultsUSB() {
 }
 
-// ============================
-// Error State functions
-// ============================
