@@ -185,6 +185,7 @@ uint32_t requestNextionNumber(const char *componentPath);
 void sendNextionCommand(const char *command);
 uint8_t limitNextionValueToByte(uint32_t value);
 void prepareMeasurementStep();
+bool isManualDutyCycleTargetInRange();
 
 void sendDutyCycleToMeasurementBoard();
 void stopMeasurementMotor();
@@ -544,6 +545,11 @@ void prepareMeasurementStep() {
         bestManualTargetDataPoint = {0, 0, 0, 0, 0};
         bestManualTargetDifference = 0.0f;
         bestManualTargetDataPointIsSet = false;
+
+        if (isManualDutyCycleTargetInRange()) {
+            currentDutyCycle = static_cast<uint8_t>(manualTargetValue);
+        }
+
         return;
     }
 
@@ -561,6 +567,12 @@ void prepareMeasurementStep() {
     }
 
     requiredDataPointCount = static_cast<uint8_t>(calculatedDataPointCount);
+}
+
+bool isManualDutyCycleTargetInRange() {
+    return selectedManualTargetType == ManualTargetType::DUTY_CYCLE &&
+           manualTargetValue >= static_cast<float>(MANUAL_MINIMUM_DUTY_CYCLE) &&
+           manualTargetValue <= static_cast<float>(MANUAL_MAXIMUM_DUTY_CYCLE);
 }
 
 // =====================================
@@ -757,6 +769,11 @@ void evaluateAutomaticMeasurementProgress() {
 
 void evaluateManualTargetMeasurementProgress() {
     updateBestManualTargetDataPoint();
+
+    if (isManualDutyCycleTargetInRange()) {
+        finishManualTargetMeasurement();
+        return;
+    }
 
     const float targetValue = getManualTargetValueInDataUnits();
     const float measuredValue = getManualDataPointValue(dataPoints[0]);
