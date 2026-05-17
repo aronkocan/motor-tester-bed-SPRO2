@@ -1,261 +1,79 @@
 # Communication Contract
 
-This document defines the communication contract between the boards and I2C devices in the Motor Tester Bed project.
+Current communication interfaces and message formats used by the code.
 
----
+## Interfaces
 
-### Main communication roles
+| Link | Interface | Role / baud | Notes |
+|---|---|---|---|
+| `arduino-main` ↔ `arduino-measurement` | I2C | main is master, measurement is slave | PWM commands and test-motor voltage ADC result |
+| `arduino-main` ↔ `arduino-opto` | I2C | main is master, opto is slave | RPM measurement commands and result |
+| `arduino-main` ↔ Motor Under Test INA226 | I2C | main is master, INA226 is slave | current read by code; test-motor voltage comes from measurement board A0 |
+| `arduino-main` ↔ Load Motor INA226 | I2C | main is master, INA226 is slave | load-motor current and bus voltage read by code |
+| `arduino-main` ↔ Nextion | hardware serial | 9600 baud | setup value requests and result-screen touch events |
+| `arduino-main` ↔ CH376 USB host | software serial | 9600 baud | exports `RESULT.CSV` |
 
-| Device | Role |
-|---|---|
-| `arduino-main` | Main coordinator / I2C master |
-| `arduino-measurement` | Worker board / I2C slave; provides A0 test-motor voltage readings |
-| `arduino-opto` | Worker board / I2C slave |
-| INA226 - Motor Under Test | I2C sensor / slave for current measurement |
-| INA226 - Load Motor | I2C sensor / slave |
-| Nextion display | USART HMI device |
+I2C pins on each Nano: A4/PC4 = SDA, A5/PC5 = SCL.
 
-`arduino-main` owns the high-level runtime logic and starts all I2C communication.
+## I2C addresses
 
----
+| Device | Address |
+|---|---:|
+| `arduino-measurement` | `0x08` |
+| `arduino-opto` | `0x09` |
+| Motor Under Test INA226 | `0x40` |
+| Load Motor INA226 | `0x45` |
 
-## I2C Bus
+## `arduino-measurement` I2C commands
 
-### I2C Pins
+| Command | ID | Request bytes | Response bytes | Purpose |
+|---|---:|---|---|---|
+| `CMD_SET_PWM` | `0x01` | `[cmd, duty:uint8]` | none | Set D6 PWM, 0-255 |
+| `CMD_STOP_MOTOR` | `0x02` | `[cmd]` | none | Set D6 PWM to 0 |
+| `CMD_TAKE_TEST_MOTOR_VOLTAGE_MEASUREMENT` | `0x03` | `[cmd]` | none | Schedule A0 voltage sampling |
+| `CMD_GET_TEST_MOTOR_VOLTAGE` | `0x04` | `[cmd]` then read | 2 bytes | Latest real test-motor voltage in millivolts, little-endian `uint16_t` |
+| `CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING` | `0x05` | `[cmd]` then read | 1 byte | `1` = running or queued, `0` = complete |
 
-On Arduino Nano / ATmega328P boards:
+The measurement board samples A0 10 times using a 5 V ADC reference, averages the result, multiplies by 6 for the voltage divider, clamps to `uint16_t`, and returns millivolts.
 
-| Arduino Pin | AVR Pin | Function |
+## `arduino-opto` I2C commands
+
+| Command | ID | Request bytes | Response bytes | Purpose |
+|---|---:|---|---|---|
+| `CMD_TAKE_RPM_MEASUREMENT` | `0x10` | `[cmd]` | none | Start a 1000 ms RPM window |
+| `CMD_GET_RPM` | `0x11` | `[cmd]` then read | 2 bytes | Latest whole-number RPM, little-endian `uint16_t` |
+| `CMD_IS_MEASUREMENT_RUNNING` | `0x12` | `[cmd]` then read | 1 byte | `1` = running or queued, `0` = complete |
+
+The opto board uses D4 with `INPUT_PULLUP`, counts LOW-to-HIGH pulse edges, assumes 40 pulses per rotation, and rounds the calculated RPM.
+
+## Nextion serial protocol
+
+`arduino-main` requests setup values by sending `get <component>.val` followed by three `0xFF` bytes. A valid numeric response starts with `0x71`, contains a 4-byte little-endian value, and ends with three `0xFF` bytes. The code retries the same request until a complete valid response is received.
+
+| Setup value | Requested component | Code meaning |
 |---|---|---|
-| A4 | PC4 / SDA | I2C data |
-| A5 | PC5 / SCL | I2C clock |
-
----
-
-## I2C Addresses
-
-| Device | Address | Notes |
-|---|---:|---|
-| `arduino-measurement` | `0x08` | Receives PWM/motor control commands and returns A0 voltage readings |
-| `arduino-opto` | `0x09` | Provides RPM data |
-| INA226 - Motor Under Test | `0x40` | Measures current for Motor Under Test; voltage comes from arduino-measurement A0 |
-| INA226 - Load Motor | `0x45` | Measures voltage/current for Load Motor |
-
----
-
-## I2C Command IDs
-
-### Commands for `arduino-measurement`
-
-| Command | ID | Direction | Purpose |
-|---|---:|---|---|
-| `CMD_SET_PWM` | `0x01` | main → measurement | Set PWM duty cycle |
-| `CMD_STOP_MOTOR` | `0x02` | main → measurement | Stop motor output |
-| `CMD_TAKE_TEST_MOTOR_VOLTAGE_MEASUREMENT` | `0x03` | main → measurement | Start a new test-motor voltage measurement |
-| `CMD_GET_TEST_MOTOR_VOLTAGE` | `0x04` | main → measurement, then main reads response | Request the latest completed test-motor ADC voltage from A0 |
-| `CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING` | `0x05` | main → measurement, then main reads response | Request whether the voltage measurement is still running |
-
-### Commands for `arduino-opto`
-
-| Command | ID | Direction | Purpose |
-|---|---:|---|---|
-| `CMD_TAKE_RPM_MEASUREMENT` | `0x10` | main → opto | Start a new RPM measurement window |
-| `CMD_GET_RPM` | `0x11` | main → opto | Request the latest completed RPM result |
-| `CMD_IS_MEASUREMENT_RUNNING` | `0x12` | main → opto | Request whether the RPM measurement window is still running |
-
----
-
-## Message Layouts
-
-### `CMD_SET_PWM`
-
-Direction: `arduino-main` → `arduino-measurement`
-
-Purpose: set the PWM duty cycle used for the motor driver.
-
-Size: 2 bytes
-
-| Byte | Field | Type | Description |
-|---:|---|---|---|
-| 0 | command ID | `uint8_t` | `CMD_SET_PWM` |
-| 1 | duty cycle | `uint8_t` | PWM value from 0 to 255 |
-
-Example:
-
-| Byte | Value |
-|---:|---:|
-| 0 | `0x01` |
-| 1 | `128` |
-
-Meaning:
-
-```text
-Set PWM output to 128, approximately 50% duty cycle.
-```
-
-### `CMD_TAKE_TEST_MOTOR_VOLTAGE_MEASUREMENT`
-
-Direction: `arduino-main` → `arduino-measurement`
-
-Purpose: start a new test-motor voltage measurement on the measurement board. The command schedules ADC sampling on the measurement board main loop so the I2C receive callback stays short. The measurement board averages multiple ADC readings using the Arduino default 5 V ADC reference, then multiplies the averaged A0 voltage by 6 to compensate for the voltage divider.
-
-Size: 1 byte
-
-| Byte | Field | Type | Description |
-|---:|---|---|---|
-| 0 | command ID | `uint8_t` | `CMD_TAKE_TEST_MOTOR_VOLTAGE_MEASUREMENT` |
-
-### `CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING`
-
-Direction: `arduino-main` → `arduino-measurement`, then `arduino-main` reads 1 byte from `arduino-measurement`
-
-Purpose: check whether the latest test-motor voltage measurement is still running before requesting the completed voltage value.
-
-Command size: 1 byte
-Response size: 1 byte
-
-Command layout:
-
-| Byte | Field | Type | Description |
-|---:|---|---|---|
-| 0 | command ID | `uint8_t` | `CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING` |
-
-Response layout:
-
-| Byte | Field | Type | Description |
-|---:|---|---|---|
-| 0 | status | `uint8_t` | `1` = voltage measurement is running, `0` = voltage measurement is not running |
-
-### `CMD_GET_TEST_MOTOR_VOLTAGE`
-
-Direction: `arduino-main` → `arduino-measurement`, then `arduino-main` reads 2 bytes from `arduino-measurement`
-
-Purpose: request the latest completed test-motor voltage measured by the `arduino-measurement` ADC on A0. This should be requested only after `CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING` reports that measurement is complete. The returned value is the calculated real test-motor voltage in millivolts.
-
-Command size: 1 byte
-Response size: 2 bytes
-
-Command layout:
-
-| Byte | Field | Type | Description |
-|---:|---|---|---|
-| 0 | command ID | `uint8_t` | `CMD_GET_TEST_MOTOR_VOLTAGE` |
-
-Response layout:
-
-| Byte | Field | Type | Description |
-|---:|---|---|---|
-| 0 | voltage low byte | `uint8_t` | low byte of real test-motor voltage in millivolts |
-| 1 | voltage high byte | `uint8_t` | high byte of real test-motor voltage in millivolts |
-
-### `CMD_TAKE_RPM_MEASUREMENT`
-
-Direction: `arduino-main` → `arduino-opto`
-
-Purpose: start a new RPM measurement window on the optocoupler board.
-
-Size: 1 byte
-
-| Byte | Field | Type | Description |
-|---:|---|---|---|
-| 0 | command ID | `uint8_t` | `CMD_TAKE_RPM_MEASUREMENT` |
-
-### `CMD_IS_MEASUREMENT_RUNNING`
-
-Direction: `arduino-main` → `arduino-opto`, then `arduino-main` reads 1 byte from `arduino-opto`
-
-Purpose: check whether the latest RPM measurement window is still running before requesting the completed RPM value.
-
-Command size: 1 byte
-Response size: 1 byte
-
-Command layout:
-
-| Byte | Field | Type | Description |
-|---:|---|---|---|
-| 0 | command ID | `uint8_t` | `CMD_IS_MEASUREMENT_RUNNING` |
-
-Response layout:
-
-| Byte | Field | Type | Description |
-|---:|---|---|---|
-| 0 | status | `uint8_t` | `1` = measurement is running, `0` = measurement is not running |
-
-### `CMD_GET_RPM`
-
-Direction: `arduino-main` → `arduino-opto`, then `arduino-main` reads 2 bytes from `arduino-opto`
-
-Purpose: request the latest completed RPM result after the measurement is no longer running.
-
-Command size: 1 byte
-Response size: 2 bytes
-
-Command layout:
-
-| Byte | Field | Type | Description |
-|---:|---|---|---|
-| 0 | command ID | `uint8_t` | `CMD_GET_RPM` |
-
-Response layout:
-
-| Byte | Field | Type | Description |
-|---:|---|---|---|
-| 0 | RPM low byte | `uint8_t` | low byte of the latest completed whole-number RPM value |
-| 1 | RPM high byte | `uint8_t` | high byte of the latest completed whole-number RPM value |
-
----
-
-## Nextion Setup Values
-
-The Arduino reads setup values from the Nextion display. Each requested number response is read completely before the next setup value is requested. If the response wait time is exceeded before a complete valid response is received, `arduino-main` sends the same request again instead of using a fallback value.
-
-### Known setup value components
-
-| Meaning | Page | Object name | ID | Type | Value meaning |
-|---|---|---|---:|---:|---|
-| Measurement mode select | `setup` | `mode` | 47 | 52 | `0 = automatic`, `1 = manual` |
-| Automatic interval min | `range` | `n0` | 14 | 54 | minimum selected interval value |
-| Automatic interval max | `range` | `n1` | 16 | 54 | maximum selected interval value |
-| Automatic step size | `range` | `n2` | 28 | 54 | selected step size |
-| Manual target select | `target` | `tarsel` | 1 | 52 | `0 = Power`, `1 = Torque`, `2 = RPM`, `3 = Effective Voltage`, `4 = Duty cycle` |
-| Power target | `target` | `power` | 24 | 52 | target power value |
-| Torque target | `ttorque` | `x0` | 1 | 59 | target torque value, format `00.0`, sent as scaled integer |
-| RPM target | `trpm` | `n0` | 1 | 54 | target RPM value |
-| Effective voltage target | `teff` | `x0` | 1 | 59 | target effective voltage value, format `00.0`, sent as scaled integer |
-| Duty cycle target | `tduty` | `n0` | 1 | 54 | target duty cycle value |
-
-### Nextion value type notes
-
-The current known Nextion value types are:
-
-| Type | Meaning / Handling |
+| Measurement mode | `setup.mode.val` | `0` automatic, `1` manual |
+| Automatic minimum | `range.n0.val` | duty minimum, clamped to 0-255 |
+| Automatic maximum | `range.n1.val` | duty maximum, clamped to 0-255 |
+| Automatic step size | `range.n2.val` | duty step, clamped to 0-255, `0` becomes `1` |
+| Manual target selector | `target.tarsel.val` | `0` power, `1` torque, `2` RPM, `3` effective voltage, `4` duty cycle |
+| Power target | `target.power.val` | milliwatts |
+| Torque target | `ttorque.x0.val` | scaled by 100, converted to mNm value |
+| RPM target | `trpm.n0.val` | RPM |
+| Effective voltage target | `teff.x0.val` | scaled by 100, converted to volts before internal millivolt comparison |
+| Duty cycle target | `tduty.n0.val` | duty value |
+
+In `OUTPUT_RESULTS`, Nextion touch events are read as `0x65, page, component, event, 0xFF, 0xFF, 0xFF`. Only press events (`event = 0x01`) are used.
+
+| Component ID | Meaning |
 |---:|---|
-| 52 | numeric selection/value |
-| 54 | numeric integer value |
-| 59 | float-style value sent as a scaled integer |
+| `1` | export results to USB |
+| `2` | return to setup state |
 
-Type `59` should be treated as a float-style value that is received by the Arduino as an integer and converted back using a scale factor of 100.
+## USB export
 
-Example:
+When export is triggered and the CH376 drive is ready, `arduino-main` writes `RESULT.CSV` with this header:
 
 ```text
-Displayed/intended value: 13.45
-Received value: 1345
-Arduino conversion: 1345 / 100.0 = 13.45
+duty,effective_mV,torque_mNm,power_mW,rpm
 ```
-
-## Nextion Touch Events
-
-Most setup values are requested by `arduino-main` from the nextion using commands. However, some Nextion buttons may send touch events automatically when pressed.
-
-When a configured Nextion button is pressed, the Nextion sends a touch event message to `arduino-main`. This only happens in the Output Results State.
-
-### Output Results State button touch event
-
-| Meaning       | Page | Object name                           | Component ID | Event | Purpose                                          |
-| ------------- | ---- | ------------------------------------- | -----------: | ----- | ------------------------------------------------ |
-| Export button | TBD  | `PLACEHOLDER_EXPORT_BUTTON_COMPONENT` |          TBD | Press | Start/export collected measurement data          |
-| Back button   | TBD  | `PLACEHOLDER_BACK_BUTTON_COMPONENT`   |          TBD | Press | Return from result/output screen to setup screen |
-
-
-When the export button is pressed, the Nextion sends a touch event message to `arduino-main`.
