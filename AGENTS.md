@@ -83,13 +83,13 @@ The Nextion display is used for setup input, local UI navigation, export trigger
 
 ### CH376 USB export
 
-In `OUTPUT_RESULTS`, a Nextion press on component ID `1` triggers USB export. The code writes `RESULT.CSV` with this header:
+In `OUTPUT_RESULTS`, a Nextion press on component ID `2` (`0x02`) triggers USB export. The code writes `RESULT.CSV` with this header:
 
 ```text
 duty,effective_mV,torque_mNm,power_mW,rpm
 ```
 
-A press on component ID `2` returns the main state machine to setup.
+A press on component ID `3` (`0x03`) from the quit button returns the main state machine to setup.
 
 ---
 
@@ -137,8 +137,8 @@ The high-level runtime flow is owned by `arduino-main` and currently uses these 
 
 5. `OUTPUT_RESULTS`
    - Wait for Nextion result-screen touch events.
-   - Component `1` exports CSV to USB.
-   - Component `2` returns to `WAIT_FOR_SETUP`.
+   - Component `2` (`0x02`) exports CSV to USB.
+   - Component `3` (`0x03`) from the quit button returns to `WAIT_FOR_SETUP`.
 
 Stop handling should remain responsive during active measurement phases. A Stop button press stops the measurement motor, briefly turns on the Stop LED, and returns to `WAIT_FOR_SETUP`.
 

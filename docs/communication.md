@@ -65,10 +65,10 @@ The opto board uses D4 with `INPUT_PULLUP`, counts LOW-to-HIGH pulse edges, assu
 
 In `OUTPUT_RESULTS`, Nextion touch events are read as `0x65, page, component, event, 0xFF, 0xFF, 0xFF`. Only press events (`event = 0x01`) are used.
 
-| Component ID | Meaning |
-|---:|---|
-| `1` | export results to USB |
-| `2` | return to setup state |
+| Component ID | Touch byte | Meaning |
+|---:|---:|---|
+| `2` | `0x02` | export results to USB |
+| `3` | `0x03` | quit results screen and return to setup state |
 
 ## USB export
 
