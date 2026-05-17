@@ -1,162 +1,162 @@
 # AGENTS.md
 
-## Project Purpose and Current Constraints
-This project is an embedded motor testing system for measuring and evaluating small electric motors (such as DC motors). The goal is to determine unknown motor parameters by running controlled measurements and calculating values within acceptable tolerance ranges.
+## Project Purpose
+
+This repository contains a small embedded motor tester for measuring and evaluating small electric motors with three Arduino Nano boards. Keep changes simple, Arduino-style, and easy to explain for a second-semester embedded project.
+
+The current implementation can:
+- run automatic duty-cycle sweeps,
+- run manual/target-based measurements,
+- collect compact integer datapoints,
+- show/control setup and result actions through a Nextion display,
+- export collected results to USB as CSV through a CH376 module.
 
 ---
 
-## System Architecture
+## Repository Layout
 
-The system consists of three Arduino Nano controllers, one Nextion display, and two INA226 current/voltage sensors.
+Each Arduino folder is an independent PlatformIO project:
 
-Hardware used:
-- `arduino-main`: Arduino Nano (`nanoatmega328new`)
-- `arduino-measurement`: Arduino Nano (`nanoatmega328new`)
-- `arduino-opto`: Arduino Nano (`nanoatmega328new`)
-- Nextion display: `NX8048P050`
-- INA sensors: 2× `INA226`
-  - one INA226 for the Motor Under Test
-  - one INA226 for the Load Motor / testing motor
+- `arduino-main/` — central coordinator and state machine.
+- `arduino-measurement/` — motor PWM worker and test-motor voltage ADC worker.
+- `arduino-opto/` — encoder/opto RPM worker.
+- `docs/communication.md` — current board-to-board, Nextion, I2C, and USB protocol details.
+- `docs/pinouts.md` — current pin assignments used by the code.
 
-### `arduino-main` — central coordinator
+Build commands:
 
-Main responsibilities:
-- high-level control logic and system state handling
-- phase transitions
-- coordination of the other boards
-- communication with the Nextion display
-- handling unified start/stop commands
-- requesting setup/input values from the Nextion display when needed
-- collecting RPM/status data from the worker boards
-- reading voltage/current data directly from the two INA226 sensors
-- storing/calculating final datapoints
+```sh
+pio run -d arduino-main
+pio run -d arduino-measurement
+pio run -d arduino-opto
+```
 
-The two INA226 sensors are used to measure electrical values for:
-- the Motor Under Test
-- the Load Motor / testing motor
+All three PlatformIO projects target `atmelavr`, board `nanoatmega328new`, framework `arduino`. `arduino-main` additionally depends on `robtillaart/INA226 @ ^0.6.6` and `Ch376msc` from `https://github.com/djuseeq/Ch376msc.git#1.4.5`.
+
+---
+
+## Hardware and Responsibilities
+
+Hardware represented by the current code:
+
+- `arduino-main`: Arduino Nano (`nanoatmega328new`), central controller.
+- `arduino-measurement`: Arduino Nano (`nanoatmega328new`), I2C slave at `0x08`.
+- `arduino-opto`: Arduino Nano (`nanoatmega328new`), I2C slave at `0x09`.
+- Nextion display (`NX8048P050`) connected to `arduino-main` hardware serial at 9600 baud.
+- Two INA226 sensors on the main I2C bus:
+  - Motor Under Test INA226 at `0x40`.
+  - Load Motor INA226 at `0x45`.
+- CH376 USB host module connected to `arduino-main` by `SoftwareSerial` at 9600 baud.
+
+### `arduino-main`
+
+Owns high-level coordination and must remain the only board that controls test phases. Its current duties are:
+
+- runtime state machine and phase transitions,
+- Start/Stop button interrupt handling,
+- Start/Stop LED handling,
+- requesting setup values from Nextion,
+- sending PWM and voltage-measurement commands to `arduino-measurement`,
+- requesting RPM measurements from `arduino-opto`,
+- reading INA226 current/voltage values where implemented,
+- calculating effective voltage, electrical power, and estimated torque,
+- storing up to 51 result datapoints,
+- handling result-screen touch events,
+- exporting `RESULT.CSV` to USB.
+
+Important current measurement detail: `arduino-main` reads Motor Under Test current from the INA226 at `0x40`, but the Motor Under Test voltage used for datapoints currently comes from `arduino-measurement` A0 over I2C. `arduino-main` also reads load-motor current and bus voltage from the INA226 at `0x45`, although those load values are not currently stored in the result datapoint.
 
 ### `arduino-measurement`
 
-Main responsibilities:
-- motor-driving/PWM logic for the Motor Under Test
-- applying PWM/duty-cycle commands received from `arduino-main`
+Acts as an I2C worker board. Its current duties are:
 
+- receive PWM commands from `arduino-main`,
+- output motor PWM on D6 with `analogWrite()`,
+- stop PWM on command,
+- sample A0 for test-motor voltage when requested,
+- return latest test-motor voltage as millivolts.
 
+The A0 voltage measurement averages 10 ADC samples using a 5 V reference, multiplies the ADC pin voltage by 6 for the voltage divider, clamps to `uint16_t`, and returns a little-endian millivolt value.
 
 ### `arduino-opto`
 
-Main responsibilities:
-- optocoupler-related input/output handling
-- encoder pulse handling
-- RPM calculation / RPM-related signal logic
-- sending optocoupler-derived status/data to `arduino-main`
+Acts as an I2C worker board. Its current duties are:
+
+- read encoder/opto pulses on D4 with `INPUT_PULLUP`,
+- count LOW-to-HIGH edges during a 1000 ms measurement window,
+- calculate whole-number RPM assuming 40 pulses per rotation,
+- return the latest RPM as a little-endian `uint16_t`.
 
 ### Nextion display
 
-The Nextion display (`NX8048P050`) is used as the user interface for setup values, status display, progress information, and results display.
+The Nextion display is used for setup input, local UI navigation, status/progress display, result display, export trigger, and return-to-setup trigger. It should not own the measurement sequence or decide runtime phase transitions. `arduino-main` requests values from named Nextion components when entering `PREPARE_TEST`.
 
-The display may handle local page navigation internally. The main Arduino should request user-entered values from the display when needed, rather than relying on the display to control the test sequence directly.
+### CH376 USB export
 
-### Boundary rules
+In `OUTPUT_RESULTS`, a Nextion press on component ID `1` triggers USB export. The code writes `RESULT.CSV` with this header:
 
-- Keep runtime responsibilities clearly separated by board.
-- Do not move responsibilities between boards without explicit reason.
-- Shared protocol/message definitions are allowed when needed for cross-board consistency.
+```text
+duty,effective_mV,torque_mNm,power_mW,rpm
+```
+
+A press on component ID `2` returns the main state machine to setup.
 
 ---
 
 ## Communication Contract
 
-- `arduino-main` ↔ `arduino-measurement`: I2C
-- `arduino-main` ↔ `arduino-opto`: I2C
-- `arduino-main` ↔ Nextion display (`NX8048P050`): USART
-- `arduino-main` ↔ INA226 sensor for Motor Under Test: I2C
-- `arduino-main` ↔ INA226 sensor for Load Motor / testing motor: I2C
+Current communication paths:
 
-Notes:
-- All I2C devices on the same bus must use unique addresses.
-- `arduino-main` owns high-level coordination and requests data from the other boards.
-- The Nextion display is used for user input/status display; it should not own the test sequence.
-- The INA226 sensors provide voltage/current measurement data to `arduino-main`.
+- `arduino-main` ↔ `arduino-measurement`: I2C, main is master, worker address `0x08`.
+- `arduino-main` ↔ `arduino-opto`: I2C, main is master, worker address `0x09`.
+- `arduino-main` ↔ Motor Under Test INA226: I2C address `0x40`.
+- `arduino-main` ↔ Load Motor INA226: I2C address `0x45`.
+- `arduino-main` ↔ Nextion display: hardware serial, 9600 baud.
+- `arduino-main` ↔ CH376 USB host: software serial on D12/D13, 9600 baud.
+
+Keep all I2C addresses unique. If protocol IDs, pin mappings, or serial component names change, update both code and the matching documentation in `docs/communication.md` or `docs/pinouts.md`.
 
 ---
 
-## Runtime Model and UI Behavior
+## Runtime Model
 
-### Main runtime states
-
-The high-level runtime flow is owned by `arduino-main`.
+The high-level runtime flow is owned by `arduino-main` and currently uses these states:
 
 1. `WAIT_FOR_SETUP`
-   - system is idle
-   - user enters/selects required setup values on the Nextion display
-   - Nextion may handle local page navigation internally
-   - `arduino-main` waits for the physical Start button
+   - System is idle.
+   - Nextion may handle local setup-page navigation.
+   - `arduino-main` waits for the physical Start button interrupt.
 
 2. `PREPARE_TEST`
-   - physical Start button has been pressed
-   - `arduino-main` requests the required setup values from the Nextion display
-   - setup values are validated
-   - initial calculations are performed
-   - old measurement data/counters are reset
-   - first measurement step is prepared
+   - Reset old measurement data.
+   - Request setup values from the Nextion display.
+   - Configure automatic or manual measurement variables.
+   - Enter the first measurement cycle.
 
 3. `RUN_MEASUREMENT_CYCLE`
-   - `arduino-main` sends the PWM value to `arduino-measurement`
-   - `arduino-measurement` applies the requested PWM output
-   - system waits for the motor to stabilize
-   - `arduino-main` reads voltage/current data directly from the INA226 sensors
-   - `arduino-opto` complete their measurements
-   - `arduino-main` requests RPM data from `arduino-opto`
-   - `arduino-main` processes the measured and received data
-   - calculated values are produced, such as effective voltage, electrical power, and estimated torque
-   - the completed datapoint is stored
+   - Send current duty cycle to `arduino-measurement`.
+   - Wait 1000 ms for stabilization while polling Stop.
+   - Read electrical measurements.
+   - Start and wait for opto RPM measurement while polling Stop.
+   - Calculate effective voltage, power, and torque.
+   - Store the completed datapoint.
 
 4. `EVALUATE_NEXT_STEP`
-   - `arduino-main` decides whether another datapoint is needed
-   - if more datapoints are needed, the next PWM/test parameters are selected and the system returns to `RUN_MEASUREMENT_CYCLE`
-   - if the measurement sequence is complete, the system transitions to `OUTPUT_RESULTS`
+   - Automatic mode selects the next duty cycle or finishes.
+   - Manual mode updates the best target match and continues or finishes.
 
 5. `OUTPUT_RESULTS`
-   - collected data is displayed and/or exported
-   - system waits until the user indicates they are done with the results
-   - after completion/reset, the system returns to `WAIT_FOR_SETUP`
+   - Wait for Nextion result-screen touch events.
+   - Component `1` exports CSV to USB.
+   - Component `2` returns to `WAIT_FOR_SETUP`.
 
-### Start/Stop command sources
-
-Start/stop commands come from hardware button inputs on `arduino-main`.
-
-The Nextion display is used for:
-- setup input
-- local page navigation
-- status display
-- progress display
-- result display
-
-The Nextion display should not own the measurement sequence or decide runtime phase transitions.
-
-### Runtime control rules
-
-- `arduino-main` owns the state machine and all high-level phase transitions and takes INA226 voltage/current measurement.
-- `arduino-measurement` acts as a worker board for PWM control.
-- `arduino-opto` acts as a worker board for optocoupler/encoder pulse handling and RPM measurement.
-- Stop handling should remain available during active measurement phases.
+Stop handling should remain responsive during active measurement phases. A Stop button press stops the measurement motor, briefly turns on the Stop LED, and returns to `WAIT_FOR_SETUP`.
 
 ---
 
 ## Measurement Data Model
 
-Completed measurement output should be represented as datapoints.
-
-Each datapoint contains compact integer values to reduce memory use on the Arduino Nano:
-
-- duty cycle step
-- effective voltage in millivolts
-- torque in millinewton-meters
-- power in milliwatts
-- RPM as a whole-number value
-
-The intended output data structure should represent one completed measurement point. Prefer fixed-unit integer fields instead of `float` fields so each stored datapoint uses less memory. Example concept:
+Completed measurements are stored as compact datapoints to fit Arduino Nano memory limits:
 
 ```cpp
 struct MeasurementDataPoint {
@@ -168,103 +168,66 @@ struct MeasurementDataPoint {
 };
 ```
 
+Use fixed-unit integer fields for stored results where practical. Do not replace this with larger or more abstract structures unless there is a clear reason.
+
+Current calculations:
+
+- Effective voltage is based on the measured test-motor voltage in millivolts.
+- Power is based on Motor Under Test voltage and current, converted to milliwatts.
+- Torque is estimated from electrical power, a fixed efficiency factor (`0.75 * 0.9`), and measured RPM.
+- Values are clamped to fit `uint16_t` where needed.
+
 ---
 
 ## Measurement Modes
 
-The system supports two measurement modes: automatic measurement and manual/target-based measurement.
+Both modes reuse the same basic cycle: set duty cycle, wait for stabilization, measure voltage/current, measure RPM, calculate values, and store a datapoint.
 
-Both modes should reuse the same basic measurement cycle:
+### Automatic Mode
 
-1. Set duty cycle value.
-2. Wait for motor behavior to stabilize.
-3. Measure voltage/current on `arduino-main`.
-4. Measure RPM on `arduino-opto`.
-5. Send worker-board status/RPM results back to `arduino-main`.
-6. Process the received data on `arduino-main`.
-7. Store the completed datapoint.
+Automatic setup values come from Nextion components:
 
-### Automatic Measurement Mode
+- `range.n0.val` — minimum duty cycle.
+- `range.n1.val` — maximum duty cycle.
+- `range.n2.val` — duty step size; `0` is converted to `1`.
 
-Automatic measurement sweeps through a selected duty cycle range and records datapoints across that range.
+The code swaps min/max if needed, calculates the required datapoint count, and limits storage to `MAX_DATA_POINTS` (`51`).
 
-Runtime behavior:
-- calculate an appropriate duty cycle step size for the selected range
-- limit the total number of stored datapoints to a maximum of 51 because Arduino memory is limited
-- run the shared measurement cycle for each planned duty cycle step
-- repeat until all planned datapoints in the selected range have been measured, using the calculated duty cycle step size
-- transition to result/output handling when complete
+### Manual / Target-Based Mode
 
-Automatic mode should not store more datapoints than the configured maximum.
+Manual setup uses `target.tarsel.val`:
 
-### Manual / Target-Based Measurement Mode
+- `0` power target from `target.power.val` in milliwatts,
+- `1` torque target from `ttorque.x0.val`, scaled by 100,
+- `2` RPM target from `trpm.n0.val`,
+- `3` effective-voltage target from `teff.x0.val`, scaled by 100 and compared internally as millivolts,
+- `4` duty-cycle target from `tduty.n0.val`.
 
-Manual measurement is used to find the duty cycle where a selected measured value reaches a user-defined target.
+Manual search currently checks the minimum duty (`1`), maximum duty (`255`), then uses a binary-search-style range narrowing until the target is within tolerance or the search range is exhausted. If the target is outside the reachable range, the best reached datapoint is kept.
 
-User setup:
-- select one target data type from the available measured/calculated values
-  - duty cycle
-  - effective voltage
-  - torque
-  - power
-  - RPM
-- input the target value
-
-Example:
-- selected target type: RPM
-- target value: 300 RPM
-- goal: find the duty cycle where the motor reaches approximately 300 RPM, then store the resulting measurement as a complete `MeasurementDataPoint` containing duty cycle step, effective voltage in millivolts, torque in millinewton-meters, power in milliwatts, and whole-number RPM
-
-Because duty cycle is discrete and motor behavior is not perfectly exact, the target value does not need to be reached exactly. A configurable tolerance/margin should be used.
-
-Runtime behavior:
-1. Measure the minimum reachable value at the lowest duty cycle.
-2. Measure the maximum reachable value at the highest duty cycle.
-3. Check whether the target is inside the reachable range.
-4. If the target is below the reachable range:
-   - return/store the minimum reached datapoint
-   - report that the requested target is below the reachable range
-5. If the target is above the reachable range:
-   - return/store the maximum reached datapoint
-   - report that the requested target is above the reachable range
-6. If the target is reachable:
-   - adjust the duty cycle until the selected measured value is within the accepted tolerance
-   - record the corresponding datapoint
-
-Manual mode should still use the same shared measurement cycle for each tested duty cycle.
-
----
-
-## Implementation Principles
-
-This is a small second-semester embedded project. The main priority is a simple, understandable, and easy-to-work-with implementation.
-
-When implementing code:
-- implement the requested instructions in the simplest reasonable way
-- keep the logic simple and readable
-- prefer clear, direct solutions over highly abstract designs
-- avoid adding extra features, abstractions, or complexity unless explicitly requested
-- make the code easy to debug and explain
-- keep board responsibilities clear
-- modify only files relevant to the requested tasktask
-
-Language/style:
-- use C++ with the Arduino framework
-- use straightforward Arduino-style code where appropriate
-- avoid advanced C++ patterns unless they clearly make the code simpler
-
----
-
-## Build
-Build system:
-- Each Arduino folder is an independent PlatformIO project with its own `platformio.ini`
+Manual target tolerance is 5% with minimum margins by target type: duty `1`, RPM `10`, effective voltage `100 mV`, torque `2 mNm`, and power `100 mW`.
 
 ---
 
 ## Pin Assignments
-Pin assignments are defined in `docs/pinouts.md`.
 
-Pin rules:
-- follow documented pin mappings
-- do not invent new mappings unless explicitly instructed
-- keep board-specific pin usage separated by Arduino
+Pin assignments are documented in `docs/pinouts.md` and should be treated as the source of truth when changing hardware-facing code. Do not invent new mappings without updating that document.
+
+Important current pins:
+
+- `arduino-main`: D2 Start button, D3 Stop button, D6 Start LED, D7 Stop LED, D12/D13 CH376 software serial, A4/A5 I2C, D0/D1 Nextion serial.
+- `arduino-measurement`: D6 motor PWM, A0 test-motor voltage ADC, A4/A5 I2C.
+- `arduino-opto`: D4 encoder pulse input, A4/A5 I2C.
+
+---
+
+## Implementation Guidelines
+
+- Keep board responsibilities clearly separated.
+- Do not move responsibilities between boards without explicit reason.
+- Prefer direct, readable Arduino C++ over advanced abstractions.
+- Keep I2C callbacks short; set flags in callbacks and perform longer work in `loop()`.
+- Use compact integer units for stored datapoints where possible.
+- Modify only files relevant to the requested task.
+- If code changes affect protocols or pins, update the corresponding docs.
+- Never add try/catch blocks around imports/includes.
