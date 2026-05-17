@@ -4,6 +4,7 @@
 #include <SoftwareSerial.h>
 #include <Ch376msc.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // =======================
@@ -218,6 +219,7 @@ bool readNextionTouchEvent(uint8_t &componentId);
 bool readNextionByteWithTimeout(uint8_t &value);
 void initializeUsbFlashDrive();
 bool writeTextToUsbFile(const char *text);
+void formatFloatValueForCsv(char *buffer, float value);
 bool writeDataPointCsvLineToUsbFile(const MeasurementDataPoint &dataPoint);
 void exportResultsUSB();
 
@@ -1044,15 +1046,30 @@ bool writeTextToUsbFile(const char *text) {
     return usbFlashDrive.writeFile(const_cast<char *>(text), strlen(text));
 }
 
+void formatFloatValueForCsv(char *buffer, float value) {
+    dtostrf(value, 0, 3, buffer);
+}
+
 bool writeDataPointCsvLineToUsbFile(const MeasurementDataPoint &dataPoint) {
-    char lineBuffer[42];
+    const float effectiveVoltageVolt = static_cast<float>(dataPoint.effectiveVoltageMilliVolt) / 1000.0f;
+    const float torqueNewtonMeter = static_cast<float>(dataPoint.torqueMilliNewtonMeter) / 1000.0f;
+    const float powerWatt = static_cast<float>(dataPoint.powerMilliWatt) / 1000.0f;
+    char effectiveVoltageVoltText[10];
+    char torqueNewtonMeterText[10];
+    char powerWattText[10];
+    char lineBuffer[58];
+
+    formatFloatValueForCsv(effectiveVoltageVoltText, effectiveVoltageVolt);
+    formatFloatValueForCsv(torqueNewtonMeterText, torqueNewtonMeter);
+    formatFloatValueForCsv(powerWattText, powerWatt);
+
     snprintf(lineBuffer,
              sizeof(lineBuffer),
-             "%u,%u,%u,%u,%u\r\n",
+             "%u,%s,%s,%s,%u\r\n",
              dataPoint.dutyCycleStep,
-             dataPoint.effectiveVoltageMilliVolt,
-             dataPoint.torqueMilliNewtonMeter,
-             dataPoint.powerMilliWatt,
+             effectiveVoltageVoltText,
+             torqueNewtonMeterText,
+             powerWattText,
              dataPoint.rpm);
 
     return writeTextToUsbFile(lineBuffer);
@@ -1071,7 +1088,7 @@ void exportResultsUSB() {
     usbFlashDrive.setFileName(USB_EXPORT_FILE_NAME);
     usbFlashDrive.openFile();
 
-    bool exportSucceeded = writeTextToUsbFile("duty,effective_mV,torque_mNm,power_mW,rpm\r\n");
+    bool exportSucceeded = writeTextToUsbFile("duty,effective_V,torque_Nm,power_W,rpm\r\n");
 
     for (uint8_t i = 0; i < dataPointCount && exportSucceeded; i++) {
         exportSucceeded = writeDataPointCsvLineToUsbFile(dataPoints[i]);
