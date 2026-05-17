@@ -86,8 +86,10 @@ The Nextion display is used for setup input, local UI navigation, export trigger
 In `OUTPUT_RESULTS`, a Nextion press on component ID `2` (`0x02`) triggers USB export. The code writes `RESULT.CSV` with this header:
 
 ```text
-duty,effective_mV,torque_mNm,power_mW,rpm
+duty,effective_V,torque_Nm,power_W,rpm
 ```
+
+The datapoints are still stored internally in compact milli-units, but immediately before each CSV datapoint line is written, effective voltage, torque, and power are exported in regular units: volts, newton-meters, and watts.
 
 A press on component ID `3` (`0x03`) from the quit button returns the main state machine to setup.
 

@@ -75,5 +75,7 @@ In `OUTPUT_RESULTS`, Nextion touch events are read as `0x65, page, component, ev
 When export is triggered and the CH376 drive is ready, `arduino-main` writes `RESULT.CSV` with this header:
 
 ```text
-duty,effective_mV,torque_mNm,power_mW,rpm
+duty,effective_V,torque_Nm,power_W,rpm
 ```
+
+The stored datapoints stay compact internally by using millivolts, millinewton-meters, and milliwatts. Immediately before each datapoint line is written to USB, those stored milli-unit fields are converted to float values in normal decimal units: volts, newton-meters, and watts.
