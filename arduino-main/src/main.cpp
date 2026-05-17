@@ -71,7 +71,9 @@ const uint8_t LOAD_MOTOR_INA226_ADDRESS = 0x45;
 
 const uint8_t CMD_SET_PWM = 0x01;
 const uint8_t CMD_STOP_MOTOR = 0x02;
-const uint8_t CMD_GET_TEST_MOTOR_VOLTAGE = 0x03;
+const uint8_t CMD_TAKE_TEST_MOTOR_VOLTAGE_MEASUREMENT = 0x03;
+const uint8_t CMD_GET_TEST_MOTOR_VOLTAGE = 0x04;
+const uint8_t CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING = 0x05;
 const uint8_t CMD_TAKE_RPM_MEASUREMENT = 0x10;
 const uint8_t CMD_GET_RPM = 0x11;
 const uint8_t CMD_IS_MEASUREMENT_RUNNING = 0x12;
@@ -90,7 +92,7 @@ const uint8_t NEXTION_RESULTS_EXPORT_BUTTON_COMPONENT_ID = 1;
 const uint8_t NEXTION_RESULTS_BACK_BUTTON_COMPONENT_ID = 2;
 const uint8_t NEXTION_END_BYTE = 0xFF;
 const uint8_t NEXTION_MAX_PWM_VALUE = 255;
-const uint16_t NEXTION_READ_TIMEOUT_MS = 500;
+const uint16_t NEXTION_TOUCH_READ_TIMEOUT_MS = 500;
 const unsigned long NEXTION_BAUD_RATE = 9600;
 const unsigned long USB_HOST_BAUD_RATE = 9600;
 const float NEXTION_SCALED_VALUE_DIVISOR = 100.0f;
@@ -106,7 +108,6 @@ const uint8_t MANUAL_TARGET_TORQUE_MINIMUM_MARGIN_MNM = 2;
 const uint16_t MANUAL_TARGET_POWER_MINIMUM_MARGIN_MW = 100;
 const unsigned long MOTOR_STABILIZATION_TIME_MS = 1000;
 const unsigned long MOTOR_STABILIZATION_STOP_POLL_INTERVAL_MS = 10;
-const unsigned long TEST_MOTOR_VOLTAGE_SAMPLE_TIME_MS = 5;
 const unsigned long STOP_LED_ON_TIME_MS = 2000;
 const char USB_EXPORT_FILE_NAME[] = "RESULT.CSV";
 
@@ -194,6 +195,8 @@ void startOptoRpmMeasurement();
 bool isOptoMeasurementRunning();
 uint16_t readOptoRpm();
 void readElectricalMeasurements();
+void startTestMotorVoltageMeasurement();
+bool isTestMotorVoltageMeasurementRunning();
 uint16_t readTestMotorVoltageMilliVoltFromMeasurementBoard();
 void calculateTorque();
 void calculatePower();
@@ -313,6 +316,10 @@ void handleRunMeasurementCycleState() {
     }
 
     readElectricalMeasurements();
+    if (currentState != MainState::RUN_MEASUREMENT_CYCLE) {
+        return;
+    }
+
     startOptoRpmMeasurement();
 
     while (isOptoMeasurementRunning()) {
@@ -480,10 +487,8 @@ uint32_t requestNextionNumber(const char *componentPath) {
     Serial.print("get ");
     sendNextionCommand(componentPath);
 
-    const unsigned long startTimeMs = millis();
-    while ((millis() - startTimeMs) < NEXTION_READ_TIMEOUT_MS) {
-        if (Serial.available() <= 0) {
-            continue;
+    while (true) {
+        while (Serial.available() <= 0) {
         }
 
         if (Serial.read() != NEXTION_NUMBER_RESPONSE) {
@@ -493,22 +498,23 @@ uint32_t requestNextionNumber(const char *componentPath) {
         uint8_t valueBytes[4] = {0, 0, 0, 0};
         for (uint8_t i = 0; i < 4; i++) {
             while (Serial.available() <= 0) {
-                if ((millis() - startTimeMs) >= NEXTION_READ_TIMEOUT_MS) {
-                    return 0;
-                }
             }
 
             valueBytes[i] = Serial.read();
         }
 
+        bool hasValidEndBytes = true;
         for (uint8_t i = 0; i < 3; i++) {
             while (Serial.available() <= 0) {
-                if ((millis() - startTimeMs) >= NEXTION_READ_TIMEOUT_MS) {
-                    return 0;
-                }
             }
 
-            Serial.read();
+            if (Serial.read() != NEXTION_END_BYTE) {
+                hasValidEndBytes = false;
+            }
+        }
+
+        if (!hasValidEndBytes) {
+            continue;
         }
 
         return static_cast<uint32_t>(valueBytes[0]) |
@@ -516,8 +522,6 @@ uint32_t requestNextionNumber(const char *componentPath) {
                (static_cast<uint32_t>(valueBytes[2]) << 16) |
                (static_cast<uint32_t>(valueBytes[3]) << 24);
     }
-
-    return 0;
 }
 
 void sendNextionCommand(const char *command) {
@@ -645,6 +649,17 @@ uint16_t readOptoRpm() {
 
 void readElectricalMeasurements() {
     motorUnderTestCurrentAmpere = motorUnderTestIna226.getCurrent();
+
+    startTestMotorVoltageMeasurement();
+    while (isTestMotorVoltageMeasurementRunning()) {
+        handleButtonInterruptFlags();
+        if (currentState != MainState::RUN_MEASUREMENT_CYCLE) {
+            return;
+        }
+
+        delay(10);
+    }
+
     const uint16_t testMotorVoltageMilliVolt = readTestMotorVoltageMilliVoltFromMeasurementBoard();
     motorUnderTestVoltageVolt = static_cast<float>(testMotorVoltageMilliVolt) / 1000.0f;
 
@@ -652,12 +667,29 @@ void readElectricalMeasurements() {
     loadMotorVoltageVolt = loadMotorIna226.getBusVoltage();
 }
 
+void startTestMotorVoltageMeasurement() {
+    Wire.beginTransmission(MEASUREMENT_I2C_ADDRESS);
+    Wire.write(CMD_TAKE_TEST_MOTOR_VOLTAGE_MEASUREMENT);
+    Wire.endTransmission();
+}
+
+bool isTestMotorVoltageMeasurementRunning() {
+    Wire.beginTransmission(MEASUREMENT_I2C_ADDRESS);
+    Wire.write(CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING);
+    Wire.endTransmission();
+
+    Wire.requestFrom(MEASUREMENT_I2C_ADDRESS, static_cast<uint8_t>(1));
+    if (Wire.available() >= 1) {
+        return Wire.read() == 1;
+    }
+
+    return true;
+}
+
 uint16_t readTestMotorVoltageMilliVoltFromMeasurementBoard() {
     Wire.beginTransmission(MEASUREMENT_I2C_ADDRESS);
     Wire.write(CMD_GET_TEST_MOTOR_VOLTAGE);
     Wire.endTransmission();
-
-    delay(TEST_MOTOR_VOLTAGE_SAMPLE_TIME_MS);
 
     Wire.requestFrom(MEASUREMENT_I2C_ADDRESS, static_cast<uint8_t>(2));
     if (Wire.available() >= 2) {
@@ -954,7 +986,7 @@ bool readNextionTouchEvent(uint8_t &componentId) {
 bool readNextionByteWithTimeout(uint8_t &value) {
     const unsigned long startTimeMs = millis();
 
-    while ((millis() - startTimeMs) < NEXTION_READ_TIMEOUT_MS) {
+    while ((millis() - startTimeMs) < NEXTION_TOUCH_READ_TIMEOUT_MS) {
         if (Serial.available() <= 0) {
             continue;
         }
