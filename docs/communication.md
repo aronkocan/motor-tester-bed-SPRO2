@@ -51,7 +51,9 @@ On Arduino Nano / ATmega328P boards:
 |---|---:|---|---|
 | `CMD_SET_PWM` | `0x01` | main → measurement | Set PWM duty cycle |
 | `CMD_STOP_MOTOR` | `0x02` | main → measurement | Stop motor output |
-| `CMD_GET_TEST_MOTOR_VOLTAGE` | `0x03` | main → measurement, then main reads response | Request latest test-motor ADC voltage from A0 |
+| `CMD_TAKE_TEST_MOTOR_VOLTAGE_MEASUREMENT` | `0x03` | main → measurement | Start a new test-motor voltage measurement |
+| `CMD_GET_TEST_MOTOR_VOLTAGE` | `0x04` | main → measurement, then main reads response | Request the latest completed test-motor ADC voltage from A0 |
+| `CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING` | `0x05` | main → measurement, then main reads response | Request whether the voltage measurement is still running |
 
 ### Commands for `arduino-opto`
 
@@ -91,11 +93,44 @@ Meaning:
 Set PWM output to 128, approximately 50% duty cycle.
 ```
 
+### `CMD_TAKE_TEST_MOTOR_VOLTAGE_MEASUREMENT`
+
+Direction: `arduino-main` → `arduino-measurement`
+
+Purpose: start a new test-motor voltage measurement on the measurement board. The command schedules ADC sampling on the measurement board main loop so the I2C receive callback stays short. The measurement board averages multiple ADC readings using the Arduino default 5 V ADC reference, then multiplies the averaged A0 voltage by 6 to compensate for the voltage divider.
+
+Size: 1 byte
+
+| Byte | Field | Type | Description |
+|---:|---|---|---|
+| 0 | command ID | `uint8_t` | `CMD_TAKE_TEST_MOTOR_VOLTAGE_MEASUREMENT` |
+
+### `CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING`
+
+Direction: `arduino-main` → `arduino-measurement`, then `arduino-main` reads 1 byte from `arduino-measurement`
+
+Purpose: check whether the latest test-motor voltage measurement is still running before requesting the completed voltage value.
+
+Command size: 1 byte
+Response size: 1 byte
+
+Command layout:
+
+| Byte | Field | Type | Description |
+|---:|---|---|---|
+| 0 | command ID | `uint8_t` | `CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING` |
+
+Response layout:
+
+| Byte | Field | Type | Description |
+|---:|---|---|---|
+| 0 | status | `uint8_t` | `1` = voltage measurement is running, `0` = voltage measurement is not running |
+
 ### `CMD_GET_TEST_MOTOR_VOLTAGE`
 
 Direction: `arduino-main` → `arduino-measurement`, then `arduino-main` reads 2 bytes from `arduino-measurement`
 
-Purpose: request the current test-motor voltage measured by the `arduino-measurement` ADC on A0. The command schedules ADC sampling on the measurement board main loop so the I2C receive callback stays short. The measurement board averages multiple ADC readings using the Arduino default 5 V ADC reference, then multiplies the averaged A0 voltage by 6 to compensate for the voltage divider. The returned value is the calculated real test-motor voltage in millivolts.
+Purpose: request the latest completed test-motor voltage measured by the `arduino-measurement` ADC on A0. This should be requested only after `CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING` reports that measurement is complete. The returned value is the calculated real test-motor voltage in millivolts.
 
 Command size: 1 byte
 Response size: 2 bytes
@@ -172,7 +207,7 @@ Response layout:
 
 ## Nextion Setup Values
 
-The Arduino reads setup values from the Nextion display.
+The Arduino reads setup values from the Nextion display. Each requested number response is read completely before the next setup value is requested. If the response wait time is exceeded before a complete valid response is received, `arduino-main` sends the same request again instead of using a fallback value.
 
 ### Known setup value components
 

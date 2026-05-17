@@ -5,7 +5,9 @@
 const uint8_t MEASUREMENT_I2C_ADDRESS = 0x08;
 const uint8_t CMD_SET_PWM = 0x01;
 const uint8_t CMD_STOP_MOTOR = 0x02;
-const uint8_t CMD_GET_TEST_MOTOR_VOLTAGE = 0x03;
+const uint8_t CMD_TAKE_TEST_MOTOR_VOLTAGE_MEASUREMENT = 0x03;
+const uint8_t CMD_GET_TEST_MOTOR_VOLTAGE = 0x04;
+const uint8_t CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING = 0x05;
 
 // PWM output pin from docs/pinouts.md: arduino-measurement D6 / PD6.
 const uint8_t MOTOR_PWM_PIN = 6;
@@ -20,7 +22,8 @@ const uint8_t TEST_MOTOR_VOLTAGE_DIVIDER_MULTIPLIER = 6;
 volatile bool hasPendingPwmValue = false;
 volatile uint8_t pendingPwmValue = 0;
 volatile uint8_t lastRequestedCommand = 0;
-volatile bool shouldReadTestMotorVoltage = true;
+volatile bool shouldStartTestMotorVoltageMeasurement = true;
+volatile bool testMotorVoltageMeasurementIsRunning = false;
 volatile uint16_t latestTestMotorVoltageMilliVolt = 0;
 
 void receiveI2cCommand(int byteCount);
@@ -49,15 +52,17 @@ void loop() {
         setMotorPwm(pwmValue);
     }
 
-    if (shouldReadTestMotorVoltage) {
+    if (shouldStartTestMotorVoltageMeasurement) {
         noInterrupts();
-        shouldReadTestMotorVoltage = false;
+        shouldStartTestMotorVoltageMeasurement = false;
+        testMotorVoltageMeasurementIsRunning = true;
         interrupts();
 
         const uint16_t voltageMilliVolt = readTestMotorVoltageMilliVolt();
 
         noInterrupts();
         latestTestMotorVoltageMilliVolt = voltageMilliVolt;
+        testMotorVoltageMeasurementIsRunning = false;
         interrupts();
     }
 }
@@ -83,9 +88,17 @@ void receiveI2cCommand(int byteCount) {
             }
             break;
 
-        case CMD_GET_TEST_MOTOR_VOLTAGE:
+        case CMD_TAKE_TEST_MOTOR_VOLTAGE_MEASUREMENT:
             // Keep the I2C callback short. The loop takes and caches the ADC sample.
-            shouldReadTestMotorVoltage = true;
+            shouldStartTestMotorVoltageMeasurement = true;
+            break;
+
+        case CMD_GET_TEST_MOTOR_VOLTAGE:
+            // The next I2C read from arduino-main will receive the latest voltage as 2 bytes.
+            break;
+
+        case CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING:
+            // The next I2C read from arduino-main will receive 1 if running, 0 if not.
             break;
 
         default:
@@ -103,6 +116,9 @@ void sendI2cResponse() {
         const uint16_t voltageMilliVolt = latestTestMotorVoltageMilliVolt;
         Wire.write(static_cast<uint8_t>(voltageMilliVolt & 0xFF));
         Wire.write(static_cast<uint8_t>((voltageMilliVolt >> 8) & 0xFF));
+    } else if (lastRequestedCommand == CMD_IS_TEST_MOTOR_VOLTAGE_MEASUREMENT_RUNNING) {
+        const uint8_t status = (testMotorVoltageMeasurementIsRunning || shouldStartTestMotorVoltageMeasurement) ? 1 : 0;
+        Wire.write(status);
     } else {
         Wire.write(static_cast<uint8_t>(0));
     }
