@@ -23,16 +23,6 @@ Each Arduino folder is an independent PlatformIO project:
 - `docs/communication.md` — current board-to-board, Nextion, I2C, and USB protocol details.
 - `docs/pinouts.md` — current pin assignments used by the code.
 
-Build commands:
-
-```sh
-pio run -d arduino-main
-pio run -d arduino-measurement
-pio run -d arduino-opto
-```
-
-All three PlatformIO projects target `atmelavr`, board `nanoatmega328new`, framework `arduino`. `arduino-main` additionally depends on `robtillaart/INA226 @ ^0.6.6` and `Ch376msc` from `https://github.com/djuseeq/Ch376msc.git#1.4.5`.
-
 ---
 
 ## Hardware and Responsibilities
@@ -89,7 +79,7 @@ Acts as an I2C worker board. Its current duties are:
 
 ### Nextion display
 
-The Nextion display is used for setup input, local UI navigation, status/progress display, result display, export trigger, and return-to-setup trigger. It should not own the measurement sequence or decide runtime phase transitions. `arduino-main` requests values from named Nextion components when entering `PREPARE_TEST`.
+The Nextion display is used for setup input, local UI navigation, export trigger, and return-to-setup trigger. It should not own the measurement sequence or decide runtime phase transitions. `arduino-main` requests values from named Nextion components when entering `PREPARE_TEST`.
 
 ### CH376 USB export
 
