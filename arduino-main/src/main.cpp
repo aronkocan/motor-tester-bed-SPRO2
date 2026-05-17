@@ -92,6 +92,7 @@ const uint8_t NEXTION_RESULTS_EXPORT_BUTTON_COMPONENT_ID = 1;
 const uint8_t NEXTION_RESULTS_BACK_BUTTON_COMPONENT_ID = 2;
 const uint8_t NEXTION_END_BYTE = 0xFF;
 const uint8_t NEXTION_MAX_PWM_VALUE = 255;
+const uint16_t NEXTION_NUMBER_READ_TIMEOUT_MS = 500;
 const uint16_t NEXTION_TOUCH_READ_TIMEOUT_MS = 500;
 const unsigned long NEXTION_BAUD_RATE = 9600;
 const unsigned long USB_HOST_BAUD_RATE = 9600;
@@ -484,43 +485,73 @@ void getSetupInformationFromNextion() {
 }
 
 uint32_t requestNextionNumber(const char *componentPath) {
-    Serial.print("get ");
-    sendNextionCommand(componentPath);
-
     while (true) {
-        while (Serial.available() <= 0) {
-        }
+        Serial.print("get ");
+        sendNextionCommand(componentPath);
 
-        if (Serial.read() != NEXTION_NUMBER_RESPONSE) {
-            continue;
-        }
-
-        uint8_t valueBytes[4] = {0, 0, 0, 0};
-        for (uint8_t i = 0; i < 4; i++) {
-            while (Serial.available() <= 0) {
+        const unsigned long requestStartTimeMs = millis();
+        while ((millis() - requestStartTimeMs) < NEXTION_NUMBER_READ_TIMEOUT_MS) {
+            if (Serial.available() <= 0) {
+                continue;
             }
 
-            valueBytes[i] = Serial.read();
-        }
-
-        bool hasValidEndBytes = true;
-        for (uint8_t i = 0; i < 3; i++) {
-            while (Serial.available() <= 0) {
+            if (Serial.read() != NEXTION_NUMBER_RESPONSE) {
+                continue;
             }
 
-            if (Serial.read() != NEXTION_END_BYTE) {
-                hasValidEndBytes = false;
+            uint8_t valueBytes[4] = {0, 0, 0, 0};
+            bool hasCompleteResponse = true;
+
+            for (uint8_t i = 0; i < 4; i++) {
+                while (Serial.available() <= 0) {
+                    if ((millis() - requestStartTimeMs) >= NEXTION_NUMBER_READ_TIMEOUT_MS) {
+                        hasCompleteResponse = false;
+                        break;
+                    }
+                }
+
+                if (!hasCompleteResponse) {
+                    break;
+                }
+
+                valueBytes[i] = Serial.read();
             }
-        }
 
-        if (!hasValidEndBytes) {
-            continue;
-        }
+            if (!hasCompleteResponse) {
+                break;
+            }
 
-        return static_cast<uint32_t>(valueBytes[0]) |
-               (static_cast<uint32_t>(valueBytes[1]) << 8) |
-               (static_cast<uint32_t>(valueBytes[2]) << 16) |
-               (static_cast<uint32_t>(valueBytes[3]) << 24);
+            bool hasValidEndBytes = true;
+            for (uint8_t i = 0; i < 3; i++) {
+                while (Serial.available() <= 0) {
+                    if ((millis() - requestStartTimeMs) >= NEXTION_NUMBER_READ_TIMEOUT_MS) {
+                        hasCompleteResponse = false;
+                        break;
+                    }
+                }
+
+                if (!hasCompleteResponse) {
+                    break;
+                }
+
+                if (Serial.read() != NEXTION_END_BYTE) {
+                    hasValidEndBytes = false;
+                }
+            }
+
+            if (!hasCompleteResponse) {
+                break;
+            }
+
+            if (!hasValidEndBytes) {
+                continue;
+            }
+
+            return static_cast<uint32_t>(valueBytes[0]) |
+                   (static_cast<uint32_t>(valueBytes[1]) << 8) |
+                   (static_cast<uint32_t>(valueBytes[2]) << 16) |
+                   (static_cast<uint32_t>(valueBytes[3]) << 24);
+        }
     }
 }
 

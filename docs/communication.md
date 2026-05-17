@@ -207,7 +207,7 @@ Response layout:
 
 ## Nextion Setup Values
 
-The Arduino reads setup values from the Nextion display. Each requested number response is read completely before the next setup value is requested; setup reads do not use a timeout fallback value.
+The Arduino reads setup values from the Nextion display. Each requested number response is read completely before the next setup value is requested. If the response wait time is exceeded before a complete valid response is received, `arduino-main` sends the same request again instead of using a fallback value.
 
 ### Known setup value components
 
