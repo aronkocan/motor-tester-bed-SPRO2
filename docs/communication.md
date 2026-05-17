@@ -67,8 +67,8 @@ In `OUTPUT_RESULTS`, Nextion touch events are read as `0x65, page, component, ev
 
 | Component ID | Meaning |
 |---:|---|
-| `1` | export results to USB |
-| `2` | return to setup state |
+| `2` | export results to USB |
+| `3` | quit results screen and return to setup state |
 
 ## USB export
 

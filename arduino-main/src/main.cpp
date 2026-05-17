@@ -88,8 +88,8 @@ const uint8_t NEXTION_TARGET_DUTY_CYCLE = 4;
 const uint8_t NEXTION_NUMBER_RESPONSE = 0x71;
 const uint8_t NEXTION_TOUCH_EVENT_RESPONSE = 0x65;
 const uint8_t NEXTION_TOUCH_EVENT_PRESS = 0x01;
-const uint8_t NEXTION_RESULTS_EXPORT_BUTTON_COMPONENT_ID = 1;
-const uint8_t NEXTION_RESULTS_BACK_BUTTON_COMPONENT_ID = 2;
+const uint8_t NEXTION_RESULTS_EXPORT_BUTTON_COMPONENT_ID = 2;
+const uint8_t NEXTION_RESULTS_QUIT_BUTTON_COMPONENT_ID = 3;
 const uint8_t NEXTION_END_BYTE = 0xFF;
 const uint8_t NEXTION_MAX_PWM_VALUE = 255;
 const uint16_t NEXTION_NUMBER_READ_TIMEOUT_MS = 500;
@@ -358,7 +358,7 @@ void handleOutputResultsState() {
 
     if (pressedComponentId == NEXTION_RESULTS_EXPORT_BUTTON_COMPONENT_ID) {
         exportResultsUSB();
-    } else if (pressedComponentId == NEXTION_RESULTS_BACK_BUTTON_COMPONENT_ID) {
+    } else if (pressedComponentId == NEXTION_RESULTS_QUIT_BUTTON_COMPONENT_ID) {
         enterState(MainState::WAIT_FOR_SETUP);
     }
 }
