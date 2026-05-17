@@ -1,91 +1,50 @@
 # Pinouts
 
-This document defines the current pin assignments for the three Arduino Nano boards used in the motor tester bed project.
+Current pin assignments used by the code for the three Arduino Nano (`nanoatmega328new`) boards.
 
----
+## `arduino-main`
 
-## arduino-measurement
+| Arduino pin | AVR pin | Direction | Function | Notes |
+|---|---|---|---|---|
+| D0 | PD0 / RX | input | Nextion serial RX | Arduino receives from Nextion TX at 9600 baud |
+| D1 | PD1 / TX | output | Nextion serial TX | Arduino sends to Nextion RX at 9600 baud |
+| D2 | PD2 / INT0 | input | START button | `INPUT`, active HIGH, rising-edge interrupt |
+| D3 | PD3 / INT1 | input | STOP button | `INPUT`, active HIGH, rising-edge interrupt |
+| D6 | PD6 | output | START LED | active HIGH |
+| D7 | PD7 | output | STOP LED | active HIGH |
+| D12 | PB4 | input | USB host serial RX | `SoftwareSerial` RX from CH376/USB host TX at 9600 baud |
+| D13 | PB5 | output | USB host serial TX | `SoftwareSerial` TX to CH376/USB host RX at 9600 baud |
+| A4 | PC4 / SDA | bidirectional | I2C SDA | master bus to worker boards and INA226 sensors |
+| A5 | PC5 / SCL | output | I2C SCL | master bus to worker boards and INA226 sensors |
 
-### Assigned pins
+Unassigned in code: D4, D5, D8, D9, D10, D11, A0, A1, A2, A3, A6, A7.
 
-| Arduino Pin | AVR Pin | Function | Notes |
-|---|---|---|---|
-| D6 | PD6 | PWM EnB | PWM output |
-| A0 | PC0 | Analog voltage input from test motor | via RC bridge and voltage divider; arduino-measurement averages ADC readings, multiplies by 6, and returns real voltage to arduino-main over I2C |
-| A4 | PC4 / SDA | I2C | communication with main Arduino |
-| A5 | PC5 / SCL | I2C | communication with main Arduino |
+## `arduino-measurement`
 
-### Unassigned
-- D0, D1, D2, D3, D4, D5, D7, D8, D9, D10, D11, D12, D13
-- A1, A2, A3, A6, A7
+| Arduino pin | AVR pin | Direction | Function | Notes |
+|---|---|---|---|---|
+| D6 | PD6 | output | Motor PWM | `analogWrite()` PWM output |
+| A0 | PC0 | input | Test-motor voltage ADC | 10 ADC samples, 5 V reference, multiplied by 6 for voltage divider |
+| A4 | PC4 / SDA | bidirectional | I2C SDA | slave address `0x08` |
+| A5 | PC5 / SCL | input | I2C SCL | slave address `0x08` |
 
----
+Unassigned in code: D0, D1, D2, D3, D4, D5, D7, D8, D9, D10, D11, D12, D13, A1, A2, A3, A6, A7.
 
-## arduino-main
+## `arduino-opto`
 
-### Assigned pins
+| Arduino pin | AVR pin | Direction | Function | Notes |
+|---|---|---|---|---|
+| D4 | PD4 | input | Encoder pulse input | `INPUT_PULLUP`; counts LOW-to-HIGH edges for RPM |
+| A4 | PC4 / SDA | bidirectional | I2C SDA | slave address `0x09` |
+| A5 | PC5 / SCL | input | I2C SCL | slave address `0x09` |
 
-| Arduino Pin | AVR Pin | Function | Notes |
-|---|---|---|---|
-| D0 | PD0 / RX | Hardware serial to Nextion RX | USART |
-| D1 | PD1 / TX | Hardware serial to Nextion TX | USART |
-| D2 | PD2 | START button | input, active HIGH |
-| D3 | PD3 | STOP button | input, active HIGH |
-| D6 | PD6 | START button LED | output, active HIGH |
-| D7 | PD7 | STOP button LED | output, active HIGH |
-| D12 | PB4 | Software serial to USB host TX | software serial |
-| D13 | PB5 | Software serial to USB host RX | software serial |
-| A4 | PC4 / SDA | I2C | communication with other Nanos and INA226 sensors |
-| A5 | PC5 / SCL | I2C | communication with other Nanos and INA226 sensors |
+Unassigned in code: D0, D1, D2, D3, D5, D6, D7, D8, D9, D10, D11, D12, D13, A0, A1, A2, A3, A6, A7.
 
-### Additional notes
-- Main controller / head Arduino
-- Communicates with:
-  - `arduino-measurement` via I2C
-  - `arduino-opto` via I2C
-  - Nextion display via USART
-  - INA226_1: Sensor for Motor Under Test current via I2C
-  - INA226_2: Sensor for Load Motor / testing motor via I2C
-  - arduino-measurement A0: Motor Under Test voltage via ADC, requested by arduino-main over I2C
+## Shared I2C bus
 
-### Unassigned
-- D4, D5, D8, D9, D10, D11
-- A0, A1, A2, A3, A6, A7
-
----
-
-## arduino-opto
-
-### Assigned pins
-
-| Arduino Pin | AVR Pin | Function | Notes |
-|---|---|---|---|
-| D4 | PD4 | Encoder pulse input (optocoupler) | digital input, pulses from encoder wheel for RPM measurement |
-| A4 | PC4 / SDA | I2C | communication with main Arduino |
-| A5 | PC5 / SCL | I2C | communication with main Arduino |
-
-### Additional notes
-- Handles optocoupler-related functionality
-- Communicates with main Arduino via I2C
-
-### Signal description
-- The optocoupler is paired with an encoder wheel attached to the motor shaft
-- It produces digital pulses corresponding to shaft rotation
-- These pulses are used to calculate rotational speed (RPM)
-
-### Unassigned
-- D0, D1, D2, D3, D5, D6, D7, D8, D9, D10, D11, D12, D13
-- A0, A1, A2, A3, A6, A7
-
----
-
-## Shared communication pins
-
-### I2C
-All three Nano boards use I2C communication.
-The two INA sensors also communicate over I2C and share the same SDA/SCL bus as the connected Arduino.
-
-| Arduino Pin | AVR Pin | Function |
+| Arduino pin | AVR pin | Function |
 |---|---|---|
-| A4 | PC4 / SDA | I2C SDA |
-| A5 | PC5 / SCL | I2C SCL |
+| A4 | PC4 / SDA | I2C data |
+| A5 | PC5 / SCL | I2C clock |
+
+I2C devices used by `arduino-main`: `arduino-measurement` (`0x08`), `arduino-opto` (`0x09`), Motor Under Test INA226 (`0x40`), and Load Motor INA226 (`0x45`).
